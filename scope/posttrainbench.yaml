@@ -1,0 +1,19 @@
+# PostTrainBench tasks in scope: one PoC configuration (2026-08-25).
+#
+# Upstream is one prompt template instantiated over (base model x target
+# benchmark). The full screening ledger -- 5 core benchmarks x 4 base models plus
+# the two LLM-judged observation benchmarks -- stays in
+# doc/meeting/aug_24_data_select.md 3.2 and remains the Tier A analysis corpus
+# (1,842 published runs). What we *run* is this single configuration: GSM8K x
+# Qwen3-4B (objectively scored, small data, SFT/LoRA/RL all fit in 10h).
+# Provisional and cheap to swap: change the task or variant here and the doc.
+
+resources: {gpus: 1, gpu_type: H100, cpus: 16, mem_gb: 128}
+budget: {official_h: 10, poc_h: 10}
+metric: {name: accuracy, direction: higher_is_better, s_min: 0.0, s_opt: 1.0}
+
+variants:
+  - Qwen/Qwen3-4B-Base
+
+tasks:
+  - id: gsm8k

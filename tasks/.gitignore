@@ -1,0 +1,28 @@
+# Files that belong to an upstream project are never committed here. They are
+# staged into a task directory from the pinned fork under third_party/ by the
+# adapter that owns the task, and regenerating them is one command:
+#
+#   python -m hv.adapters.airs generate --task <Name>
+#   python -m hv.adapters.speedrun_pi stage
+#
+# The reason is licensing, not size. airs-bench is CC BY-NC 4.0, whose
+# non-commercial term would otherwise attach to this repository; the Prime
+# Intellect release carries no LICENSE at all, so nothing grants us the right to
+# redistribute it. GitHub's terms do grant the right to fork both on GitHub,
+# which is what third_party/ is.
+#
+# What stays committed is everything we wrote: task.toml, Dockerfiles, compose
+# files, our verifiers, and reference solutions.
+
+# AIRS: upstream's prepare/evaluate scripts, the gold labels they produce, and
+# instruction.md — which is project_description.md verbatim plus the harness
+# section the adapter appends, so it embeds upstream text either way.
+airs/*/tests/upstream/
+airs/*/tests/eval_data/
+airs/*/instruction.md
+
+# PI speedrun: program.md (as instruction.md) and the baseline training script.
+# run.sh and verify.py are NOT here — they were never published, and ours are
+# recovered from the tool results inside the released traces.
+speedrun_pi/*/instruction.md
+speedrun_pi/*/environment/train_gpt_simple.py

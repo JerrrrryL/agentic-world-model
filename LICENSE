@@ -1,0 +1,483 @@
+HIERARCHY-VERIFIER NON-COMMERCIAL RESEARCH LICENSE
+Version 1.0 — 25 August 2026
+
+Copyright (c) 2026 Xiangru Tang. All rights reserved.
+
+SPDX-License-Identifier: LicenseRef-HV-NC-1.0
+
+===============================================================================
+IMPORTANT — READ BEFORE USING THIS SOFTWARE
+===============================================================================
+
+THIS IS NOT AN OPEN SOURCE LICENSE. It is not approved by the Open Source
+Initiative, it is not a Free Software license, and it is not compatible with
+the GNU GPL, the Apache License, or any other open source license.
+
+The Software is proprietary. Every right that is not expressly granted in
+Section 3 is reserved by the Licensor. In particular, this License grants NO
+right to use the Software commercially, NO right to redistribute the Software
+or any modified version of it, NO right to sublicense it, and NO patent
+license of any kind.
+
+If you cannot comply with every term below, you have no license to the
+Software and must not copy, download, install, execute, or retain it. To
+obtain rights beyond those granted here — including any commercial right —
+you must first obtain a separate written commercial license from the Licensor
+(Section 21).
+
+===============================================================================
+1. DEFINITIONS
+===============================================================================
+
+1.1 "Licensor" means Xiangru Tang, the copyright owner of the Software, and
+    the Licensor's successors and assigns.
+
+1.2 "Software" means the hierarchy-verifier evaluation framework: all source
+    code, object code, scripts, task definitions, container definitions,
+    scoring and verification code, scope registries, metric anchors, event
+    schemas, prompts, agent definitions, configuration, research notes,
+    methodology documents, design logs, documentation, and any other material
+    authored by the Licensor and contained in this repository, in whole or in
+    part, in any form or medium, together with any portion, fragment, or
+    excerpt thereof.
+
+    The Software does NOT include the contents of the upstream repositories
+    referenced as submodules under `third_party/`, nor any third-party
+    benchmark, dataset, model, container image, or trajectory release that the
+    Software fetches, references, converts, or operates on. Those are governed
+    exclusively by their own licenses (Section 11).
+
+1.3 "You" (or "Your") means the individual or legal entity exercising the
+    permissions granted by this License. If You are acting for or on behalf of
+    an organization, "You" includes that organization and all entities that
+    control, are controlled by, or are under common control with it, and You
+    represent that You are authorized to bind that organization to this
+    License.
+
+1.4 "Derivative Work" means any work that is based on, adapted from,
+    translated from, ported from, refactored from, or otherwise derived from
+    the Software, and any work that incorporates, links to, embeds, wraps, or
+    contains any portion of the Software.
+
+1.5 "Output" means any artifact produced by executing, applying, or operating
+    the Software or a Derivative Work, including but not limited to converted
+    trajectory event streams and indices, agent run records, evaluation
+    results, benchmark scores, verifier judgements, leaderboards, generated
+    datasets, model weights and checkpoints, trained, fine-tuned, or distilled
+    models, embeddings, reports, and generated source code.
+
+1.6 "Commercial Use" means any use, activity, or purpose that is directed
+    toward or results in commercial advantage, monetary compensation, or
+    other economic benefit, whether or not any revenue is actually received.
+    Commercial Use includes, without limitation:
+
+    (a) use by, within, or on behalf of any for-profit entity, including
+        internal research, internal tooling, internal evaluation, and internal
+        business operations of such an entity;
+
+    (b) use in or for the development, training, evaluation, testing,
+        improvement, benchmarking, marketing, demonstration, sale, licensing,
+        or support of any product, model, agent, dataset, or service that is
+        offered, distributed, or intended to be offered for a fee or for other
+        consideration;
+
+    (c) provision of the Software or a Derivative Work, or of any capability
+        of either, to third parties as a hosted, managed, or network-
+        accessible service, including software-as-a-service, an application
+        programming interface, an inference endpoint, an agent platform, an
+        evaluation-as-a-service offering, or a cloud offering, whether or not
+        a fee is charged;
+
+    (d) use in consulting, contract research, professional services, or
+        outsourced work performed for consideration;
+
+    (e) research that is funded, sponsored, commissioned, or directed, in
+        whole or in part, by a for-profit entity, or research conducted under
+        an agreement that confers on a for-profit entity any option, license,
+        preferential access, or ownership right in the results;
+
+    (f) use to create, train, distil, evaluate, benchmark, or improve any
+        model, agent, system, or dataset that is or will be used commercially,
+        or that competes with the Software or with any product or service of
+        the Licensor;
+
+    (g) use in connection with the offering, promotion, or issuance of
+        securities, tokens, fundraising, or investor diligence; and
+
+    (h) redistribution or provision of the Software or a Derivative Work in
+        exchange for any fee, advertising revenue, data, service, or other
+        consideration.
+
+    The absence of a monetary charge does not by itself make a use non-
+    commercial.
+
+1.7 "Non-Commercial Research" means research, teaching, or personal study that
+    (i) is conducted by You solely for the purpose of academic research,
+    scholarly publication, education, or personal learning, (ii) is not a
+    Commercial Use, and (iii) is conducted by an individual acting in a
+    personal capacity or by a degree-granting academic institution, a public
+    research institute, or a registered non-profit organization, in each case
+    acting in its non-commercial capacity.
+
+===============================================================================
+2. RESERVATION OF RIGHTS
+===============================================================================
+
+The Software is licensed, not sold. The Licensor retains all right, title, and
+interest in and to the Software, including all copyright, patent, trade
+secret, trademark, database, moral, and other intellectual property rights.
+No right, license, immunity, or interest is granted by implication, estoppel,
+exhaustion, acquiescence, course of dealing, or otherwise. Any right not
+expressly granted in Section 3 is withheld.
+
+===============================================================================
+3. LIMITED GRANT
+===============================================================================
+
+Subject to Your continuous and complete compliance with every term of this
+License, the Licensor grants You a personal, non-exclusive, non-transferable,
+non-sublicensable, non-assignable, worldwide, royalty-free, and REVOCABLE
+license to:
+
+    (a) download and make a reasonable number of copies of the Software
+        solely as necessary to exercise the rights in (b) and (c);
+
+    (b) execute and internally use the Software solely for Non-Commercial
+        Research; and
+
+    (c) modify the Software and create Derivative Works solely for Your own
+        Non-Commercial Research and solely for Your own internal use.
+
+This grant is the entire grant. It confers no right to distribute, publish,
+transfer, host, sublicense, sell, rent, lease, or otherwise make available the
+Software or any Derivative Work to any third party (Section 5).
+
+===============================================================================
+4. CONDITIONS
+===============================================================================
+
+Each right in Section 3 is conditioned on all of the following:
+
+4.1 You retain this License file, the NOTICE file, and all copyright,
+    attribution, and proprietary notices, unmodified and intact, in every copy
+    of the Software and every Derivative Work.
+
+4.2 You do not remove, obscure, alter, or circumvent any notice, watermark,
+    provenance record, license check, or technical restriction contained in
+    the Software.
+
+4.3 You publicly attribute the Software in any publication, preprint,
+    presentation, poster, thesis, leaderboard, or public description of
+    results obtained with the Software, naming the Software and the Licensor,
+    using the citation metadata published with the Software (CITATION.cff, if
+    present), and stating that the Software is used under the
+    Hierarchy-Verifier Non-Commercial Research License.
+
+4.4 You comply with all applicable laws and with the terms of every third-
+    party model, dataset, benchmark, trajectory release, container image, and
+    service that You use with the Software (Section 11).
+
+Failure to satisfy any condition terminates the grant automatically under
+Section 13 and makes Your subsequent use of the Software an infringement of
+copyright.
+
+===============================================================================
+5. PROHIBITED USES
+===============================================================================
+
+You must NOT, and must not permit or assist any third party to:
+
+5.1 make any Commercial Use of the Software, a Derivative Work, or any Output,
+    in whole or in part;
+
+5.2 distribute, publish, transmit, disclose, lend, share, mirror, fork,
+    upload, host, or otherwise make available the Software or any Derivative
+    Work, in source or object form, to any third party, including via a public
+    or private code repository, package registry, model hub, container
+    registry, dataset repository, file-sharing service, or physical medium;
+
+5.3 provide, expose, or operate the Software or a Derivative Work as, or as
+    part of, any service, endpoint, agent, bot, evaluation harness, or
+    platform accessible to any third party, whether or not for a fee;
+
+5.4 sublicense, assign, novate, pledge, or otherwise transfer this License or
+    any right under it, including by merger, acquisition, reorganization, or
+    operation of law;
+
+5.5 use the Software, a Derivative Work, or any Output to develop, train,
+    distil, fine-tune, evaluate, or improve any model, agent, dataset,
+    framework, or system that is used commercially or that competes with the
+    Software or with any product, service, or research programme of the
+    Licensor;
+
+5.6 use the Software or any Output as, or as an input to, any clinical,
+    diagnostic, therapeutic, medical-device, safety-certification, or other
+    high-stakes decision-making application, or represent that any Output has
+    clinical, regulatory, or scientific validity;
+
+5.7 use the Software to develop, design, produce, or deploy weapons, including
+    biological, chemical, nuclear, or radiological agents, or to conduct
+    surveillance, profiling, or any activity that violates human rights or
+    applicable law;
+
+5.8 reverse engineer, decompile, or disassemble any portion of the Software
+    that is provided in non-source form, except to the minimum extent that
+    such a restriction is expressly unenforceable under applicable law;
+
+5.9 use the names "hierarchy-verifier", "agentic-world-model", "Xiangru Tang",
+    or any Licensor trademark, service mark, logo, or trade name, except for
+    factual, unmodified attribution required by Section 4.3; or
+
+5.10 assert, or assist any party in asserting, any patent, copyright, or other
+    intellectual property claim against the Licensor or against any user of
+    the Software in respect of the Software, a Derivative Work, or any Output.
+
+===============================================================================
+6. DERIVATIVE WORKS AND OUTPUTS
+===============================================================================
+
+6.1 Derivative Works created under Section 3(c) remain subject to this License
+    in their entirety. This License applies to a Derivative Work as if the
+    Derivative Work were the Software. You may not relicense a Derivative
+    Work, place it under any other terms, or contribute it to any project
+    under any other terms.
+
+6.2 Outputs may be used by You solely for Non-Commercial Research. Commercial
+    Use of any Output is prohibited under Section 5.1, and this restriction
+    survives regardless of how much the Output has been transformed,
+    aggregated, quantized, distilled, or fine-tuned. Models and agents
+    trained, distilled, selected, or evaluated with the Software may not be
+    commercially exploited without a separate written commercial license.
+
+6.3 You may publish research results, figures, metrics, and descriptions
+    derived from Non-Commercial Research use of the Software, provided You
+    comply with Section 4.3 and do not publish the Software or a Derivative
+    Work itself (Section 5.2).
+
+===============================================================================
+7. CONTRIBUTIONS
+===============================================================================
+
+If You submit any patch, pull request, issue content, code, documentation, or
+other material to the Licensor or to this project ("Contribution"), You hereby
+grant the Licensor a perpetual, worldwide, irrevocable, royalty-free, fully
+paid-up, transferable, and sublicensable license (with the right to grant
+sublicenses through multiple tiers) to use, reproduce, modify, adapt, publish,
+distribute, sublicense, relicense on any terms including commercial terms, and
+otherwise exploit the Contribution and any derivative of it, for any purpose,
+without any obligation of compensation, accounting, or attribution to You.
+
+You represent that You are legally entitled to grant that license, that the
+Contribution is Your original work or that You have all necessary rights to
+it, and that the Contribution does not knowingly infringe any third-party
+right. A Contribution grants You no additional rights in the Software beyond
+those in Section 3.
+
+===============================================================================
+8. NO PATENT LICENSE
+===============================================================================
+
+No patent license, covenant not to sue, or immunity of any kind is granted by
+this License, whether expressly, by implication, by estoppel, or otherwise.
+The Licensor expressly reserves all patent rights that read on the Software,
+on any Derivative Work, and on any Output. If You require a patent license,
+You must obtain one separately in writing (Section 21).
+
+===============================================================================
+9. NO TRADEMARK LICENSE
+===============================================================================
+
+This License grants no right to use any Licensor trademark, service mark,
+logo, trade name, or product name, except as strictly required by Section 4.3.
+
+===============================================================================
+10. NO SUPPORT AND NO OBLIGATION
+===============================================================================
+
+The Licensor has no obligation to provide support, maintenance, updates, bug
+fixes, security patches, migration assistance, or any future version of the
+Software, and no obligation to continue publishing the Software.
+
+===============================================================================
+11. THIRD-PARTY BENCHMARKS, MODELS, DATA, AND ARTIFACTS
+===============================================================================
+
+Upstream benchmarks and harnesses referenced as submodules under
+`third_party/`, together with models, datasets, benchmark assets, published
+agent trajectory releases, checkpoints, container images, external services,
+and other third-party artifacts that the Software downloads, references,
+invokes, converts, evaluates, or operates on, are NOT part of the Software and
+are NOT licensed under this License. They are governed exclusively by their
+own licenses and terms, which You must independently review and comply with
+before any use, conversion, publication, or redistribution. The Licensor
+grants You no rights whatsoever in third-party code, weights, trajectories,
+data, or services, makes no representation about their fitness or lawfulness
+for Your purpose, and establishes no clinical, regulatory, or scientific
+validity for anything produced with the Software.
+
+===============================================================================
+12. AUDIT AND COMPLIANCE
+===============================================================================
+
+Upon the Licensor's written request, You will, within thirty (30) days,
+certify in writing Your compliance with this License and describe Your use of
+the Software in reasonable detail. The Licensor may verify compliance by
+reasonable means. This Section does not entitle the Licensor to access Your
+confidential data or systems.
+
+===============================================================================
+13. TERM, TERMINATION, AND REVOCATION
+===============================================================================
+
+13.1 This License takes effect when You first access, copy, download, install,
+     or use the Software and continues until terminated.
+
+13.2 This License terminates AUTOMATICALLY AND IMMEDIATELY, without notice,
+     upon any breach by You of any term or condition of it. Reinstatement is
+     available only by express written notice from the Licensor and is at the
+     Licensor's sole discretion. There is no cure period.
+
+13.3 This License terminates automatically and immediately if You, or any
+     entity You control or that controls You, initiates or voluntarily
+     participates in any patent, copyright, trade secret, or other
+     intellectual property claim, action, counterclaim, or proceeding against
+     the Licensor or against any user of the Software, alleging that the
+     Software, a Derivative Work, or any Output infringes.
+
+13.4 The Licensor may REVOKE this License with respect to You at any time, in
+     its sole discretion, by written or public notice, with or without cause.
+
+13.5 Upon termination or revocation for any reason, You must immediately cease
+     all use of the Software, all Derivative Works, and all Outputs, and must
+     permanently delete or destroy every copy of them in Your possession or
+     control, and certify that destruction in writing if requested.
+
+13.6 Sections 1, 2, 5, 6.2, 7, 8, 9, 11, 13.5, 14, 15, 16, 17, and 18 survive
+     any termination or revocation.
+
+===============================================================================
+14. NO WARRANTY
+===============================================================================
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITH ALL FAULTS AND
+WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE
+LICENSOR DISCLAIMS ALL WARRANTIES AND CONDITIONS, WHETHER EXPRESS, IMPLIED,
+STATUTORY, OR OTHERWISE, INCLUDING ANY IMPLIED WARRANTY OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, ACCURACY, QUIET ENJOYMENT, OR NON-
+INFRINGEMENT, AND ANY WARRANTY ARISING FROM COURSE OF DEALING OR USAGE OF
+TRADE. THE LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE,
+SECURE, OR UNINTERRUPTED, OR THAT ANY OUTPUT, SCORE, RANKING, OR VERIFIER
+JUDGEMENT WILL BE CORRECT, REPRODUCIBLE, OR SCIENTIFICALLY VALID.
+
+THE SOFTWARE BUILDS AND RUNS CONTAINERS IN WHICH AUTONOMOUS RESEARCH AGENTS
+GENERATE AND EXECUTE UNTRUSTED CODE, AND IT CONSUMES REAL COMPUTE AND
+CREDENTIALS. YOU RUN IT ENTIRELY AT YOUR OWN RISK AND ARE SOLELY RESPONSIBLE
+FOR ISOLATION, ACCESS CONTROL, DATA GOVERNANCE, AND ALL CONSEQUENCES OF ITS
+EXECUTION.
+
+===============================================================================
+15. LIMITATION OF LIABILITY
+===============================================================================
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR WILL NOT BE LIABLE FOR
+ANY INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL
+DAMAGES, OR FOR ANY LOSS OF PROFITS, REVENUE, DATA, COMPUTE, RESEARCH RESULTS,
+GOODWILL, OR BUSINESS OPPORTUNITY, ARISING OUT OF OR RELATING TO THIS LICENSE
+OR THE SOFTWARE, UNDER ANY THEORY OF LIABILITY, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES. THE LICENSOR'S TOTAL AGGREGATE LIABILITY ARISING
+OUT OF OR RELATING TO THIS LICENSE OR THE SOFTWARE WILL NOT EXCEED ZERO
+UNITED STATES DOLLARS (USD 0.00), WHICH YOU ACKNOWLEDGE IS A REASONABLE
+ALLOCATION OF RISK GIVEN THAT THE SOFTWARE IS PROVIDED WITHOUT CHARGE.
+
+===============================================================================
+16. INDEMNIFICATION
+===============================================================================
+
+You will defend, indemnify, and hold harmless the Licensor and the Licensor's
+affiliates, employees, students, and agents from and against any claim,
+demand, proceeding, loss, liability, damage, fine, penalty, cost, and expense
+(including reasonable legal fees) arising out of or relating to (a) Your use
+of the Software, any Derivative Work, or any Output, (b) Your breach of this
+License, or (c) Your violation of any law or third-party right.
+
+===============================================================================
+17. REMEDIES
+===============================================================================
+
+You acknowledge that any breach of Section 5 would cause the Licensor
+irreparable harm for which monetary damages are an inadequate remedy, and that
+the Licensor is entitled to seek injunctive and other equitable relief without
+posting a bond or proving actual damages, in addition to all other remedies
+available at law or in equity, including statutory damages and recovery of
+legal fees where available.
+
+===============================================================================
+18. EXPORT CONTROL AND SANCTIONS
+===============================================================================
+
+You must comply with all applicable export control, sanctions, and import
+laws. You represent that You are not located in, organized under the laws of,
+or ordinarily resident in any jurisdiction subject to comprehensive sanctions,
+and that You are not a party listed on any restricted-party or denied-party
+list.
+
+===============================================================================
+19. GOVERNING LAW AND VENUE
+===============================================================================
+
+This License is governed by the laws of the State of Connecticut, United
+States of America, excluding its conflict-of-law rules and excluding the
+United Nations Convention on Contracts for the International Sale of Goods.
+The state and federal courts located in New Haven County, Connecticut have
+exclusive jurisdiction over any dispute arising out of or relating to this
+License, and You consent to personal jurisdiction and venue in those courts
+and waive any objection to them. Nothing in this Section prevents the Licensor
+from seeking injunctive relief in any court of competent jurisdiction.
+
+===============================================================================
+20. GENERAL
+===============================================================================
+
+20.1 Entire agreement. This License is the entire agreement between You and
+     the Licensor regarding the Software and supersedes all prior or
+     contemporaneous understandings on that subject.
+
+20.2 No waiver. The Licensor's failure or delay in enforcing any provision is
+     not a waiver of it or of any other provision.
+
+20.3 Severability. If any provision is held unenforceable, it will be modified
+     to the minimum extent necessary to make it enforceable, or if it cannot
+     be so modified, severed, and the remaining provisions will remain in full
+     force. Where a restriction in Section 5 is held unenforceable in a
+     jurisdiction, no license is granted in that jurisdiction to the extent
+     the restriction would have applied.
+
+20.4 No relationship. This License creates no partnership, joint venture,
+     agency, employment, or fiduciary relationship.
+
+20.5 Versions. The Licensor may publish revised versions of this License for
+     future releases. Each release of the Software is governed by the version
+     of this License distributed with it. This License does not retroactively
+     alter the terms under which any earlier release of the Software was
+     lawfully obtained.
+
+20.6 Language. This License is written in English. If it is translated, the
+     English version controls.
+
+===============================================================================
+21. COMMERCIAL LICENSING
+===============================================================================
+
+Commercial licenses, patent licenses, redistribution rights, OEM terms,
+hosted-service rights, and any other permission beyond Section 3 are available
+by separate written agreement only. Direct enquiries to the Licensor:
+
+    Xiangru Tang — https://github.com/tangxiangru
+
+No employee, student, collaborator, contributor, or agent of the Licensor has
+authority to grant, waive, or vary any right under this License except by a
+written instrument signed by the Licensor.
+
+===============================================================================
+END OF LICENSE
+===============================================================================

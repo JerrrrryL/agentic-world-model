@@ -1,0 +1,32 @@
+[project]
+name = "hierarchy-verifier"
+version = "0.1.0"
+description = "Hierarchical verifier synthesis for autonomous model development: benchmark scope, unified trajectories, analysis"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "huggingface-hub>=0.30",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+hv = "hv.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["hv*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

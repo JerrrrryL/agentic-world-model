@@ -1,0 +1,14 @@
+# Recovered from the PI traces: `torch==2.11`, `huggingface_hub`, `wandb`
+# (Python 3.12.3).  We pin the exact patch release and add numpy — see
+# README.md "Deviations".
+torch==2.11.0
+huggingface_hub
+wandb
+
+# NOT in PI's list, but REQUIRED: the frozen dataloader calls
+# `f.readinto(tokens.numpy())` in `_load_data_shard`.  torch 2.11 no longer
+# depends on numpy, and neither do huggingface_hub or wandb, so a venv built
+# from PI's three lines alone crashes on the first shard load with
+# "RuntimeError: Numpy is not available".  PI's venv must have had it pulled in
+# some other way; the recovered requirements.txt is incomplete.
+numpy

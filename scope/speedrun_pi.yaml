@@ -1,0 +1,17 @@
+# NanoGPT speedrun, Prime Intellect track-3 optimizer. One task, many seeds.
+#
+# Seed, model and harness are properties of a run, not of the task, so they live
+# in RunMeta rather than here. Selection and gate reasoning:
+# doc/meeting/aug_24_data_select.md section 3.5.
+#
+# train_steps as the metric is what keeps our numbers comparable to PI's on
+# different hardware: baseline 3290 is their tuned Muon+AdamW recipe, reference
+# 2600 the human record, and neither depends on how fast a step runs.
+
+resources: {gpus: 8, gpu_type: H200}
+budget: {official_h: 192, poc_h: 24}
+
+tasks:
+  - id: nanogpt_track3
+    family: nanogpt_speedrun
+    metric: {name: train_steps, direction: lower_is_better, baseline: 3290, reference: 2600}

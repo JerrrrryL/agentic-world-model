@@ -1,0 +1,8 @@
+{
+  "task": "TextualClassificationSickAccuracy",
+  "metric": "Accuracy",
+  "direction": "higher_is_better",
+  "s_sota": 0.905,
+  "s_min": 0.1451284,
+  "s_opt": 1.0
+}

@@ -1,0 +1,55 @@
+hierarchy-verifier — evaluation methodology for model-development research agents
+Copyright (c) 2026 Xiangru Tang. All rights reserved.
+
+PROPRIETARY — NON-COMMERCIAL RESEARCH USE ONLY. NOT OPEN SOURCE.
+
+This software is licensed under the Hierarchy-Verifier Non-Commercial Research
+License, Version 1.0 (SPDX-License-Identifier: LicenseRef-HV-NC-1.0), a copy
+of which is provided in the LICENSE file at the repository root. You may not
+use, copy, execute, or retain this software except in full compliance with
+that License.
+
+Summary — the License text controls, and this summary grants nothing:
+
+  PERMITTED   Internal use and modification of the software by academic,
+              non-profit, and individual users, solely for non-commercial
+              research, teaching, or personal study, with attribution and
+              citation as required by Section 4.3.
+
+  PROHIBITED  Any commercial use of the software, of any derivative work, or
+              of any model, agent, dataset, score, or other output produced
+              with it — including internal use by a for-profit entity, hosted
+              or API services, evaluation-as-a-service, consulting, and
+              commercially funded or sponsored research.
+
+              Any redistribution, publication, mirroring, forking, or other
+              provision of the software or a derivative work to any third
+              party, in source or binary form.
+
+              Sublicensing, assignment, or transfer of the License.
+
+  NOT GRANTED No patent license. No trademark license. No warranty of any
+              kind. The Licensor's aggregate liability is capped at USD 0.00.
+
+  REVOCABLE   The License terminates automatically on any breach, with no
+              cure period, and may be revoked by the Licensor at any time.
+
+Commercial licenses, patent licenses, and redistribution rights are available
+by separate written agreement only. Contact the Licensor:
+
+    Xiangru Tang — https://github.com/tangxiangru
+
+Scope note — third-party material is NOT covered by the License above:
+
+  * The upstream benchmarks and harnesses pinned as submodules under
+    `third_party/` (PostTrainBench, AIRS-Bench, frontier-automated-speedrun)
+    are the work of their own authors and carry their own licenses. They are
+    referenced, never vendored.
+
+  * Published agent trajectory releases that `hv traj fetch` downloads, and
+    the datasets, model weights, container images, and external services that
+    the tasks mount or invoke, are licensed separately by their publishers.
+
+  Review and comply with each of those licenses independently before any use,
+  conversion, publication, or redistribution. Nothing in this repository
+  grants you rights in them.

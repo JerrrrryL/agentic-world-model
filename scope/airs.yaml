@@ -1,0 +1,44 @@
+# AIRS-Bench tasks in scope: the eight most GPU-hungry ones (2026-08-25).
+#
+# Everything listed here is in scope, so there is no verdict column: which tasks
+# got here and why -- the per-task G1 evidence, the GPU-heavy selection rule and
+# what was dropped or kept as backup (WinoGrande, SICK x2, TS x3) -- is recorded
+# in doc/meeting/aug_24_data_select.md section 3.4, with per-task GPU needs in
+# doc/reference/harness_facts/gpu_requirements.md. FinQA is out (SOTA is GPT-4
+# prompting, fails G1); DuoRC is in (SOTA is ALBERT finetuning).
+#
+# The metric values are copied from each task's upstream metadata.yaml and
+# `hv scope check` reads them back to prove they still agree, so never edit them
+# by hand. reference is the published SOTA, s_min the worst observed score, s_opt
+# the theoretical optimum: the three anchors the normalised score is built from.
+#
+# Keys above `tasks` apply to every task; a task may override any of them.
+
+resources: {gpus: 1, gpu_type: H200, cpus: 24, mem_gb: 200}
+budget: {official_h: 24, poc_h: 24}  # poc = official: single trainings run 1-12h, an 8h slice fits only 1-3 experiments
+
+tasks:
+  - id: CvMolecularPropertyPredictionQm9MeanAbsoluteError
+    family: Molecules and Proteins ML
+    metric: {name: MeanAbsoluteError, direction: lower_is_better, reference: 0.021, s_min: 132.63319396972656, s_opt: 0.0}
+  - id: GMolecularPropertyPredictionQm9MeanAbsoluteError
+    family: Molecules and Proteins ML
+    metric: {name: MeanAbsoluteError, direction: lower_is_better, reference: 7.53, s_min: 11185110, s_opt: 0.0}
+  - id: R2AbsMolecularPropertyPredictionQm9MeanAbsoluteError
+    family: Molecules and Proteins ML
+    metric: {name: MeanAbsoluteError, direction: lower_is_better, reference: 0.033, s_min: 6536.567, s_opt: 0.0}
+  - id: U0MolecularPropertyPredictionQm9MeanAbsoluteError
+    family: Molecules and Proteins ML
+    metric: {name: MeanAbsoluteError, direction: lower_is_better, reference: 5.83, s_min: 24183970, s_opt: 0.0}
+  - id: GraphRegressionZincMae
+    family: Molecules and Proteins ML
+    metric: {name: MAE, direction: lower_is_better, reference: 0.017, s_min: 9.699924, s_opt: 0.0}
+  - id: SentimentAnalysisYelpReviewFullAccuracy
+    family: Text Classification
+    metric: {name: Accuracy, direction: higher_is_better, reference: 0.778, s_min: 0.18208, s_opt: 1.0}
+  - id: QuestionAnsweringDuoRCAccuracy
+    family: Question Answering
+    metric: {name: Accuracy, direction: higher_is_better, reference: 0.4648, s_min: 0.0, s_opt: 1.0}
+  - id: ReadingComprehensionSquadExactMatch
+    family: Question Answering
+    metric: {name: ExactMatch, direction: higher_is_better, reference: 0.858, s_min: 0.0, s_opt: 1.0}
