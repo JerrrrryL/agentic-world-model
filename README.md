@@ -1,4 +1,4 @@
-# hierarchy-verifier
+agentic-world-model
 
 Evaluation methodology for **model-development research agents**: not whether the code runs, but
 whether the agent breaks a research goal into sub-goals, relates them to the final objective, and
