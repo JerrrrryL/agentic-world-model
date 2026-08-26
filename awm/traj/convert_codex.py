@@ -22,21 +22,33 @@ Upstream quirks worth recording:
     format: the gsm8k / gpt-5.4 sample has none, but 24 of the 44 codex runs in
     the fetched batch have the launcher's ``[ISO] `` prefix on every line. The
     prefix is used when present and nothing is invented when it is not.
-*   ``turn.completed`` holds the run's only usage; it is written back onto the
-    first event of that turn, as the schema requires.
+*   ``turn.completed`` holds the run's only usage, and **it is cumulative over
+    the thread, not per turn**. 430 runs have a single turn, where the two are
+    the same thing; the 76 ``reprompt`` runs have two to six, one thread id
+    each, and their counts are monotone (output and reasoning on all 76, input
+    and cache on 75 — one thread compacted and went down). So the turn's own
+    usage is the DELTA, floored at zero, and the run's total is the LAST line;
+    summing what the lines say counts a 6-turn run about four times over.
+    Whether the usage of a harness is per step or cumulative has to be measured
+    per harness — opencode's is per step, Claude Code's cost is cumulative
+    while its tokens are per session, and this one is cumulative throughout.
 *   A line can also be a bare ``{"type": "error", "message": "Reconnecting…"}``
     when the response stream drops (3 of the 82 fetched runs). It is the CLI
     talking, not the agent, so it becomes a harness event rather than vanishing.
 *   Tool names are the codex item types (``command_execution``, ``file_change``,
     ``web_search``, ``todo_list``) rather than invented ones: codex does not
     name its tools in the stream.
+*   Not every JSON object on the stream is codex's. Two runs have a
+    ``generation_config.json`` blob printed there by a training subprocess; it
+    has no ``type`` and is skipped by ``event_kind``, which is what stops it
+    raising ``KeyError`` in the middle of an otherwise complete run.
 """
 
 from __future__ import annotations
 
 from typing import Any, Iterable
 
-from awm.traj.posttrainbench import LineRow, number_events
+from awm.traj.posttrainbench import LineRow, event_kind, number_events
 from awm.traj.schema import MAIN_AGENT, Event
 
 _USAGE_KEYS = {
@@ -62,6 +74,16 @@ def map_usage(usage: dict[str, Any] | None) -> dict[str, int] | None:
     return out or None
 
 
+def _delta(total: dict[str, int], prev: dict[str, int] | None) -> dict[str, int] | None:
+    """One turn's own usage, out of the thread's running total."""
+    if prev is None:
+        return dict(total)
+    # One thread's input count falls between turns — the CLI compacted it — and
+    # a turn that consumed a negative number of tokens is not a thing to record.
+    out = {k: max(0, v - prev.get(k, 0)) for k, v in total.items()}
+    return {k: v for k, v in out.items() if v} or None
+
+
 def _args(item: dict[str, Any]) -> dict[str, Any] | None:
     fields = _TOOL_ARGS[item["type"]]
     out = {k: item[k] for k in fields if item.get(k) is not None}
@@ -77,6 +99,8 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
     turn = -1
     turn_first: int | None = None
     turns: list[dict[str, Any]] = []
+    #: The thread's running total, i.e. the last ``turn.completed`` seen.
+    run_tokens: dict[str, int] | None = None
 
     def add(**kw: Any) -> Event:
         nonlocal turn_first
@@ -87,10 +111,10 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
         return e
 
     for ts, obj, lineno, _raw in rows:
-        if obj is None:
-            continue
+        kind = event_kind(obj)
+        if kind is None or obj is None:
+            continue  # not JSON, or JSON that is not one of codex's events
         ref = {"file": "solve_out.txt", "line": lineno}
-        kind = obj["type"]
 
         if kind == "thread.started":
             thread_id = obj.get("thread_id")
@@ -101,11 +125,16 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
             turns.append({"index": turn, "started_line": lineno})
 
         elif kind == "turn.completed":
-            usage = map_usage(obj.get("usage"))
+            total = map_usage(obj.get("usage"))
+            usage = _delta(total, run_tokens) if total else None
+            if total:
+                run_tokens = total
             if turn_first is not None and usage:
                 events[turn_first].usage = usage
             if turns:
-                turns[-1].update({"completed_line": lineno, "usage": usage})
+                turns[-1].update(
+                    {"completed_line": lineno, "usage": usage, "usage_cumulative": total}
+                )
 
         elif kind.startswith("item."):
             item = obj["item"]
@@ -155,9 +184,13 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
                 text=msg if isinstance(msg, str) else None, extra={"kind": kind})
 
     unfinished = sorted(iid for iid in calls if iid not in completed)
-    return number_events(events), {
+    extra: dict[str, Any] = {
         "thread_id": thread_id,
         "turns": turns,
         "n_turns": len(turns),
         "unfinished_items": unfinished,
+        "tokens_source": "turn.completed" if run_tokens else "none",
     }
+    if run_tokens:
+        extra["tokens"] = run_tokens
+    return number_events(events), extra

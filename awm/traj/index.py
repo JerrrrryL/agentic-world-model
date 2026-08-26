@@ -14,6 +14,11 @@ Two conventions, both load-bearing:
 *   Counts that ``schema.summarize`` derived are complete for the stream, so a
     type absent from ``n_by_type`` really did occur zero times. An *empty*
     ``n_by_type`` means nobody counted, and becomes NA.
+*   Token counts are the opposite: they are what the harness reported, not
+    something we derived, so a *missing key* is already NA. A harness that
+    counted zero of something writes the zero (``map_usage`` keeps an integer 0),
+    while 106 converted Claude Code runs were killed before their ``result`` line
+    and have no output count at all — ``tok_out`` for those is unknown, not zero.
 
 ``RunMeta.flags`` is free-form (each converter records the validity verdicts its
 source published), so the two boolean-ish columns read it by rule rather than by
@@ -131,6 +136,11 @@ def _count(counts: dict[str, int], key: str) -> int | None:
     return counts.get(key, 0) if counts else None
 
 
+def _tokens(counts: dict[str, int], key: str) -> int | None:
+    """A token stream nobody reported is NA — see the module docstring."""
+    return counts.get(key)
+
+
 def row_from_meta(meta: RunMeta, events_path: Path | str | None = None) -> dict[str, Any]:
     """Flatten one ``RunMeta`` into the index's columns."""
     budget = meta.budget or {}
@@ -159,9 +169,9 @@ def row_from_meta(meta: RunMeta, events_path: Path | str | None = None) -> dict[
         "n_text": _count(meta.n_by_type, "text"),
         "n_harness_events": _count(meta.n_by_origin, "harness"),
         "n_subagents": len(meta.subagents),
-        "tok_in": _count(tokens, "in"),
-        "tok_out": _count(tokens, "out"),
-        "tok_cache_read": _count(tokens, "cache_read"),
+        "tok_in": _tokens(tokens, "in"),
+        "tok_out": _tokens(tokens, "out"),
+        "tok_cache_read": _tokens(tokens, "cache_read"),
         "cost_usd": meta.cost_usd,
         "flagged": flagged,
         "flag_reasons": flag_reasons,

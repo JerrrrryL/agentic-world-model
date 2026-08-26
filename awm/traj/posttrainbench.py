@@ -1,20 +1,28 @@
 """PostTrainBench runs: directory conventions, the shared line reader, and RunMeta.
 
 One run is a directory ``<raw_root>/<agent_config>/<run_dir>/`` whose
-``solve_out.txt`` is the coding CLI's own JSONL, captured verbatim. Two CLIs are
-covered here, each with its own converter module: Claude Code
-(``--output-format stream-json``) and Codex (``exec --json``).
+``solve_out.txt`` is the coding CLI's own JSONL, captured verbatim. Four CLIs
+are covered, each with its own converter module: Claude Code
+(``--output-format stream-json``), Codex (``exec --json``), OpenCode
+(``run --format json``) and Cursor (``--output-format stream-json``).
+
+Seven scaffolds produced those four formats. ``glmx``, ``kimi_claude`` and
+``qwen3max`` are Claude Code pointed at another provider through
+``ANTHROPIC_BASE_URL``, so they are byte-compatible with the claude runs and
+need no converter of their own; ``cursor`` and ``opencode`` are their own CLIs.
 
 Upstream quirks a future reader would otherwise rediscover the hard way:
 
 *   ``solve_out.txt`` lines are sometimes prefixed ``"[2026-06-07T21:31:06Z] "``
     by the harness's ``timestamp_lines.py`` and sometimes not — measured: every
-    line of the claude sample, zero lines of the codex sample. The prefix is the
-    only timestamp source; when it is absent the events carry no ``ts`` at all.
+    line of the claude sample, zero lines of the codex sample. For those two
+    CLIs the prefix is the only timestamp source and events carry no ``ts`` when
+    it is absent; OpenCode and Cursor timestamp every line in-band instead.
 *   The file is not pure JSONL. The launcher's CUDA preamble, HF warnings and a
     final ``Terminated`` share the stream (11 of 663 lines in the claude sample,
     10 of 300 in codex). Those lines are counted into ``RunMeta.extra``, never
-    silently dropped.
+    silently dropped. A *parsed* line is not necessarily an event either — see
+    ``event_kind``.
 *   ``metrics.json`` is the published score; ``time_taken.txt`` is wall clock for
     the whole slot (solve + eval), so it is longer than the trajectory.
 *   The contamination verdict is ``judgement_gpt5_4.json`` for most runs but
@@ -46,8 +54,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
 from awm.traj.schema import MAIN_AGENT, Event, RunMeta, SubAgent, summarize, write_run
 
@@ -231,18 +240,128 @@ def number_events(events: list[Event]) -> list[Event]:
     return events
 
 
-def detect_harness(solve_out: Path) -> str:
-    """Sniff the first JSON object: codex opens a thread, Claude Code inits a session."""
-    for _ts, obj, _n, _raw in read_line_stream(solve_out):
-        if obj is None:
+class NoAgentOutput(ValueError):
+    """``solve_out.txt`` holds no agent events at all.
+
+    41 published runs are a few hundred bytes of shell error — ``opencode:
+    command not found``, ``error: unknown option '--effort'``, ``CUDA is not
+    available`` — because the CLI died before it emitted anything. None has a
+    ``metrics.json``. That is a run that did not happen, not a format this
+    converter failed to read, and the two must not be reported the same way.
+    """
+
+
+def event_kind(obj: dict[str, Any] | None) -> str | None:
+    """The line's event type, or ``None`` when the line is not an agent event.
+
+    A JSON object on the stream is not necessarily one of the CLI's. Two runs
+    have a ``generation_config.json`` blob (``{"bos_token_id": 151643, ...}``)
+    printed to stdout by a training subprocess and interleaved into
+    ``solve_out.txt`` by the launcher. It parses as a dict and has no ``type``,
+    and reading ``obj["type"]`` unguarded is what made those two runs raise
+    ``KeyError`` instead of converting.
+    """
+    if not isinstance(obj, dict):
+        return None
+    kind = obj.get("type")
+    return kind if isinstance(kind, str) else None
+
+
+def iso_from_ms(ms: Any) -> str | None:
+    """Epoch milliseconds -> ``2026-01-20T12:45:28.196Z``; ``None`` if absent.
+
+    OpenCode and Cursor carry their own timestamp in-band on every line, while
+    the launcher's ``[ISO] `` prefix is on only some of them (7,272 of
+    OpenCode's 89,396 lines). Where both exist they agree to within a second, so
+    the in-band value is the better source. Reformatting a recorded epoch is not
+    synthesising a timestamp: nothing is produced when the field is absent.
+    """
+    if isinstance(ms, bool) or not isinstance(ms, (int, float)):
+        return None
+    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def compact(d: Any, limit: int = 2000, drop: Iterable[str] = ()) -> dict[str, Any] | None:
+    """A harness metadata blob with its bulk elided, so an extra bag stays small.
+
+    A value whose JSON runs past ``limit`` is replaced by ``"<elided N chars>"``
+    rather than removed: the key stays visible, so a reader can tell the field
+    was there and how much of it was set aside — which a silent drop could not.
+    ``drop`` names fields that only repeat something already promoted onto the
+    event itself.
+    """
+    if not isinstance(d, dict):
+        return None
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        if k in drop:
             continue
-        kind = obj.get("type", "")
-        if kind == "thread.started" or kind.startswith(("item.", "turn.")):
-            return "codex"
-        if kind in ("system", "assistant", "user", "result", "rate_limit_event"):
-            return "claude-code"
-        return "unknown"
+        if v is None or isinstance(v, (bool, int, float)):
+            out[k] = v
+            continue
+        try:
+            n = len(json.dumps(v, ensure_ascii=False))
+        except (TypeError, ValueError):
+            out[k] = str(v)[:limit]
+            continue
+        out[k] = v if n <= limit else f"<elided {n} chars>"
+    return out or None
+
+
+#: Line types that identify each CLI, tested in this order.
+#:
+#: Cursor MUST be tested before Claude Code. It emits ``system`` / ``assistant``
+#: / ``user`` / ``result`` under exactly those names, so the first object of a
+#: cursor run (``{"type": "system", "subtype": "init", ...}``) is an exact
+#: claude-code marker: sniffing one object answered "claude-code" for all 56
+#: cursor runs, and converting them as Claude Code dropped their ``thinking``
+#: and ``tool_call`` lines — 128k events — through an if/elif chain with no
+#: ``else``. The markers listed here are the ones no other CLI shares.
+_HARNESS_MARKERS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("codex", frozenset({"thread.started", "turn.started", "turn.completed",
+                         "item.started", "item.updated", "item.completed"})),
+    ("opencode", frozenset({"step_start", "step_finish", "tool_use"})),
+    ("cursor-cli", frozenset({"thinking", "tool_call", "connection", "retry",
+                              "interaction_query"})),
+    ("claude-code", frozenset({"system", "assistant", "user", "result",
+                               "rate_limit_event"})),
+)
+
+#: How many candidate event objects the sniffer looks at. Measured over all
+#: 1,786 published runs: every one's decisive marker is within its first 50, so
+#: this is 4x slack — and it has to be bounded because a solve_out reaches 1.5 GB.
+SNIFF_WINDOW = 200
+
+
+def sniff_harness(rows: Iterable[LineRow]) -> str:
+    """Which CLI wrote this stream: a harness name, ``none`` or ``unknown``.
+
+    Votes over a window rather than deciding on the first object, because the
+    first object is not decisive: it is a shared type name for cursor, and the
+    launcher's own output can precede it.
+    """
+    seen: set[str] = set()
+    n = 0
+    for _ts, obj, _lineno, _raw in rows:
+        kind = event_kind(obj)
+        if kind is None:
+            continue
+        seen.add(kind)
+        n += 1
+        if n >= SNIFF_WINDOW:
+            break
+    if not n:
+        return "none"
+    for harness, markers in _HARNESS_MARKERS:
+        if seen & markers:
+            return harness
     return "unknown"
+
+
+def detect_harness(solve_out: Path) -> str:
+    """``sniff_harness`` over a file, for callers that have a path and no rows."""
+    return sniff_harness(read_line_stream(solve_out))
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -404,20 +523,32 @@ def build_run(run: RunDir) -> tuple[list[Event], RunMeta]:
     """Convert one run directory in memory, dispatching on the sniffed harness."""
     # Imported here, not at module level: the converters take LineRow and
     # number_events from this module, so the dependency only runs one way.
-    from awm.traj import convert_claude_code, convert_codex
+    from awm.traj import convert_claude_code, convert_codex, convert_cursor, convert_opencode
 
-    harness = detect_harness(run.solve_out)
+    converters = {
+        "claude-code": convert_claude_code.convert,
+        "codex": convert_codex.convert,
+        "cursor-cli": convert_cursor.convert,
+        "opencode": convert_opencode.convert,
+    }
     rows = list(read_line_stream(run.solve_out))
-    if harness == "claude-code":
-        events, extra = convert_claude_code.convert(rows, run.run_id)
-    elif harness == "codex":
-        events, extra = convert_codex.convert(rows, run.run_id)
-    else:
+    harness = sniff_harness(rows)
+    if harness == "none":
+        raise NoAgentOutput(f"no agent output in {run.solve_out}")
+    if harness not in converters:
         raise ValueError(f"unknown CLI format in {run.solve_out}")
+    events, extra = converters[harness](rows, run.run_id)
+
     non_json = [(n, raw) for _ts, obj, n, raw in rows if obj is None]
+    # A dict with no `type` parsed fine and is still not an event: counting it
+    # apart is what keeps the two `generation_config.json` blobs the launcher
+    # interleaved from reading as either events or unparsable text.
+    foreign = [(n, raw) for _ts, obj, n, raw in rows if obj is not None and event_kind(obj) is None]
     extra["n_lines"] = len(rows)
     extra["n_non_json_lines"] = len(non_json)
     extra["non_json_lines"] = [{"line": n, "text": raw[:200]} for n, raw in non_json[:40]]
+    extra["n_foreign_json_lines"] = len(foreign)
+    extra["foreign_json_lines"] = [{"line": n, "text": raw[:200]} for n, raw in foreign[:40]]
     return events, build_meta(run, events, harness, extra)
 
 

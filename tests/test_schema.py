@@ -178,3 +178,18 @@ class TestRoundTrip:
         events, meta = self._run(tmp_path)
         write_run(events, meta, tmp_path)
         assert not list(tmp_path.glob("*.tmp"))
+
+    def test_a_lone_surrogate_survives_the_round_trip(self, tmp_path):
+        """Two opencode runs truncate a web result mid-emoji and publish half of
+        one. It cannot be encoded as UTF-8, so writing it raised and lost the run;
+        it must be re-escaped, not dropped — the file is the corpus."""
+        events, meta = self._run(tmp_path)
+        events[2].text = "* [\ud83d"  # the high half of a truncated U+1F4C1
+        events[2].extra = {"note": "\ud83d"}
+        meta.extra = {"note": "\ud83d"}
+        path = write_run(events, meta, tmp_path)
+        assert "\\ud83d" in gzip.open(path, "rt", encoding="utf-8").read()
+        back = list(read_events(path))
+        assert back[2].text == "* [\ud83d"
+        assert back[2].extra == {"note": "\ud83d"}
+        assert read_meta(tmp_path / "r1.meta.json").extra == {"note": "\ud83d"}

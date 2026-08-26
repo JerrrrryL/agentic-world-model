@@ -11,12 +11,25 @@ Upstream quirks worth recording:
     lines sharing ``message.id`` are one API response — 392 lines, 155 distinct
     ids. ``usage`` is repeated identically on each of those lines, so a turn is
     a message id and the usage is kept on the turn's first event only.
+*   **``output_tokens`` on an assistant message is a snapshot taken before the
+    response finished streaming, not the response's output count**, and it is
+    never usable: 1 to 67 tokens for messages whose thinking block alone is 2 kB
+    of JSON, identical on every line of the message. Summed per message id it
+    disagrees with the ``result`` lines on all 735 runs that have one, 3.56 M
+    against 94.5 M — a 26.5× undercount that would have read as "Claude Code
+    writes 2% of what codex writes". It is dropped from the per-event usage;
+    ``input``/``cache`` are counted at request start and are kept.
 *   The run is one CLI session id but thirteen ``init``/``result`` pairs: the
     launcher restarts the CLI with ``--continue`` whenever it exits (here, when
     a background task reports back). Sessions therefore cannot be told apart by
     ``session_id``; they are numbered by ``init`` order. ``total_cost_usd`` on
-    each ``result`` is CUMULATIVE over the whole run, so the run's cost is the
-    last one, never the sum.
+    each ``result`` is CUMULATIVE over the whole run (monotone on all 735), so
+    the run's cost is the last one, never the sum. Its ``usage`` is the opposite
+    — per session — so the run's tokens are the SUM over the results, and that
+    is what ``tokens`` carries. The two conventions sit on the same line.
+*   114 of the 849 runs were killed before any ``result`` line and have no
+    authoritative usage at all. ``tokens_source`` says which of the two a run's
+    tokens came from, so a partial count is never read as a measured one.
 *   The launcher's re-prompt never appears in the stream — a ``--print`` run
     does not echo its prompt — so no user text event is invented for it. The
     ``init`` line is emitted instead, as a ``harness`` marker with no text.
@@ -39,7 +52,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from awm.traj.posttrainbench import LineRow, number_events
+from awm.traj.posttrainbench import LineRow, event_kind, number_events
 from awm.traj.schema import MAIN_AGENT, Event
 
 #: The only truncation the CLI announces in-band: a background task's output is
@@ -55,13 +68,21 @@ _USAGE_KEYS = {
     "cache_creation_input_tokens": "cache_write",
 }
 
+#: What an assistant line may be believed about. Its ``output_tokens`` is the
+#: count at the moment the block was emitted, not the response's — see the
+#: module docstring — so only the request-side counts are read from it.
+_REQUEST_KEYS = {k: v for k, v in _USAGE_KEYS.items() if v != "out"}
+
 _SCALARS = (bool, int, float, str)
 
 
-def map_usage(usage: dict[str, Any] | None) -> dict[str, int] | None:
+def map_usage(usage: dict[str, Any] | None, *, streaming: bool = False) -> dict[str, int] | None:
+    """``streaming=True`` for an assistant message, whose response was still
+    being written when the line was emitted."""
+    keys = _REQUEST_KEYS if streaming else _USAGE_KEYS
     if not usage:
         return None
-    out = {v: int(usage[k]) for k, v in _USAGE_KEYS.items() if isinstance(usage.get(k), int)}
+    out = {v: int(usage[k]) for k, v in keys.items() if isinstance(usage.get(k), int)}
     return out or None
 
 
@@ -100,8 +121,12 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
     cli_versions: list[str] = []
     tools_available: list[str] = []
     open_session: dict[str, Any] | None = None
+    # The run's authoritative usage, summed over the per-session ``result``
+    # lines. Nothing else in the stream counts output tokens.
+    run_tokens: dict[str, int] = {}
     last_message_id: str | None = None
     usage_seen: set[str] = set()
+    unknown_kinds: dict[str, int] = {}
     # Turns count API responses over the whole run and never reset at a session
     # boundary: the sessions are one continued conversation, not thirteen runs.
     turn = -1
@@ -112,10 +137,10 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
         return e
 
     for ts, obj, lineno, _raw in rows:
-        if obj is None:
-            continue
+        kind = event_kind(obj)
+        if kind is None or obj is None:
+            continue  # not JSON, or JSON that is not one of the CLI's events
         ref = {"file": "solve_out.txt", "line": lineno}
-        kind = obj["type"]
         agent_id = obj.get("parent_tool_use_id") or MAIN_AGENT
         parent = obj.get("parent_tool_use_id")
 
@@ -173,7 +198,7 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
             )
 
         elif kind == "assistant":
-            msg = obj["message"]
+            msg = obj.get("message") or {}
             mid = msg.get("id")
             if mid != last_message_id:
                 last_message_id = mid
@@ -181,7 +206,7 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
                 # A sub-agent's lines can interrupt a parent message and let it
                 # resume under a second turn number; its usage is the same
                 # payload repeated, so it counts only the first time.
-                usage = None if mid in usage_seen else map_usage(msg.get("usage"))
+                usage = None if mid in usage_seen else map_usage(msg.get("usage"), streaming=True)
                 usage_seen.add(mid)
             else:
                 usage = None
@@ -210,7 +235,7 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
                 usage = None
 
         elif kind == "user":
-            content = obj["message"].get("content")
+            content = (obj.get("message") or {}).get("content")
             meta = _scalar_meta(obj.get("tool_use_result"))
             blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
             for block in blocks or []:
@@ -248,9 +273,23 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
                     "total_cost_usd": obj.get("total_cost_usd"),
                     "stop_reason": obj.get("stop_reason"),
                     "terminal_reason": obj.get("terminal_reason"),
+                    "usage": map_usage(obj.get("usage")),
                 }
             )
+            for key, value in (map_usage(obj.get("usage")) or {}).items():
+                run_tokens[key] = run_tokens.get(key, 0) + value
             open_session = None
+
+        else:
+            # No line type may leave without an event. This chain having had no
+            # `else` is how the 56 cursor runs lost 128k `thinking` and
+            # `tool_call` lines while reporting a clean conversion; detection
+            # sends those elsewhere now, but a stream is still allowed to carry
+            # a type this converter has never seen, and it must say so.
+            unknown_kinds[kind] = unknown_kinds.get(kind, 0) + 1
+            add(agent_id=agent_id, type="text", role="user", origin="harness", ts=ts,
+                turn=turn if turn >= 0 else None, source_ref=ref,
+                extra={"kind": kind, "line": obj})
 
     costs = [s["total_cost_usd"] for s in sessions if s.get("total_cost_usd") is not None]
     extra: dict[str, Any] = {
@@ -262,7 +301,13 @@ def convert(rows: Iterable[LineRow], run_id: str) -> tuple[list[Event], dict[str
         "tools_available": tools_available,
         "num_turns_reported": sum(s["num_turns"] for s in sessions if s.get("num_turns")),
         "duration_ms_sum": sum(s["duration_ms"] for s in sessions if s.get("duration_ms")),
+        "unknown_line_kinds": unknown_kinds,
+        # ``result`` where the run reached one; otherwise the request-side
+        # counts off the assistant messages, which carry no output count at all.
+        "tokens_source": "result" if run_tokens else "assistant_messages",
     }
+    if run_tokens:
+        extra["tokens"] = run_tokens
     if costs:
         extra["cost_usd"] = costs[-1]
     return number_events(events), extra

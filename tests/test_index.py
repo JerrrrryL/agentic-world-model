@@ -122,8 +122,18 @@ def test_counted_zero_stays_zero() -> None:
                    n_by_type={"text": 1}, n_by_origin={"agent": 1}, tokens={"in": 7})
     row = index.row_from_meta(meta)
     assert row["n_thinking"] == 0 and row["n_tool_use"] == 0
-    assert row["tok_out"] == 0 and row["tok_in"] == 7
     assert row["n_harness_events"] == 0
+    # Tokens go the other way: we did not count them, the harness reported them.
+    # This run reported an input count and no output count, which is unknown and
+    # not zero — 106 converted Claude Code runs died before the line carrying `out`.
+    assert row["tok_in"] == 7 and row["tok_out"] is None
+
+
+def test_a_reported_zero_is_kept_apart_from_an_unreported_stream() -> None:
+    """The distinction is only worth having if a real zero survives it."""
+    meta = RunMeta(run_id="r", source=SOURCE, benchmark="b", n_events=1,
+                   tokens={"in": 7, "out": 0})
+    assert index.row_from_meta(meta)["tok_out"] == 0
 
 
 @pytest.mark.parametrize(

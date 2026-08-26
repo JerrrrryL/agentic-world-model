@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -237,6 +238,27 @@ def summarize(events: list[Event]) -> dict[str, Any]:
     }
 
 
+#: A surrogate code point, which is what is left of an emoji when a harness
+#: truncates its output mid-character.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def dumps(obj: Any, indent: int | None = None) -> str:
+    """``json.dumps`` that can always be encoded as UTF-8.
+
+    ``ensure_ascii=False`` keeps the text readable, but a lone surrogate cannot
+    be encoded at all and raises on write. Two opencode runs have one: the CLI
+    cut a web-search result at its character budget in the middle of a 📁
+    (``U+1F4C1`` = ``\\ud83d\\udcc1``) and published the high half by itself.
+    Re-escaping it is exact — ``json.loads`` gives the same code point back —
+    where dropping or replacing it would silently edit the corpus.
+    """
+    s = json.dumps(obj, ensure_ascii=False, indent=indent)
+    if _LONE_SURROGATE.search(s):
+        s = _LONE_SURROGATE.sub(lambda m: "\\u%04x" % ord(m.group()), s)
+    return s
+
+
 def events_path(out_dir: Path, run_id: str) -> Path:
     return out_dir / f"{run_id}.jsonl.gz"
 
@@ -254,10 +276,10 @@ def write_run(events: list[Event], meta: RunMeta, out_dir: Path, validate: bool 
     tmp = ep.with_suffix(ep.suffix + ".tmp")
     with gzip.open(tmp, "wt", encoding="utf-8") as fh:
         for e in events:
-            fh.write(json.dumps(e.to_json(), ensure_ascii=False) + "\n")
+            fh.write(dumps(e.to_json()) + "\n")
     tmp.replace(ep)
     mp = meta_path(out_dir, meta.run_id)
-    mp.write_text(json.dumps(meta.to_json(), ensure_ascii=False, indent=2), encoding="utf-8")
+    mp.write_text(dumps(meta.to_json(), indent=2), encoding="utf-8")
     return ep
 
 

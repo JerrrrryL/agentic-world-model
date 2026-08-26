@@ -59,14 +59,26 @@ def _convert_ptb(limit: int | None) -> int:
     if limit:
         runs = runs[:limit]
     failed = []
+    skipped = []
     for run in runs:
         try:
             ptb.convert_run_dir(run, out)
+        except ptb.NoAgentOutput:
+            # The CLI died before emitting anything — `opencode: command not
+            # found`, an unknown flag, no CUDA. 41 runs, none with a
+            # metrics.json. Nothing was published to convert, so this is not a
+            # conversion failure and must not red the exit code.
+            skipped.append(run.run_id)
         except Exception as exc:  # one malformed run must not abandon the batch
             # run_id, not the directory name: two agent configurations hold the
             # same 28 run names, so the bare name identifies neither.
             failed.append((run.run_id, exc))
-    print(f"posttrainbench: {len(runs) - len(failed)}/{len(runs)} runs -> {out}")
+    ok = len(runs) - len(failed) - len(skipped)
+    print(f"posttrainbench: {ok}/{len(runs)} runs -> {out}")
+    if skipped:
+        print(f"  skipped {len(skipped)} run(s) with no agent output")
+    for name in skipped:
+        print(f"  SKIPPED {name}: no agent output", file=sys.stderr)
     for name, exc in failed:
         print(f"  FAILED {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
     return 1 if failed else 0
