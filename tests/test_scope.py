@@ -177,10 +177,24 @@ class TestMalformed:
         assert problems and any("no metric" in p for p in problems)
 
 
+#: ``check()`` compares our AIRS anchors against upstream's ``metadata.yaml``
+#: only when the submodule is checked out — a missing one is a checkout state,
+#: not a registry inconsistency, so ``check()`` skips that comparison in
+#: silence. Every test of that comparison skips on the same condition and says
+#: which command fixes it; without the guard the drift test fails on a fresh
+#: clone with an assertion that reads like drift went unnoticed.
+_needs_airs_upstream = pytest.mark.skipif(
+    not scope.AIRS_UPSTREAM.is_dir(),
+    reason=f"airs-bench submodule not checked out at {scope.AIRS_UPSTREAM} — "
+           "`git submodule update --init third_party/airs-bench`",
+)
+
+
 class TestCheck:
     def test_the_registry_is_currently_consistent(self):
         assert scope.check() == []
 
+    @_needs_airs_upstream
     def test_it_catches_a_metric_that_drifted_from_upstream(self, monkeypatch):
         """The AIRS anchors are copies of upstream's; drift must be reported."""
         real = scope.load
@@ -224,12 +238,12 @@ class TestAgainstUpstream:
 
     UPSTREAM = scope.AIRS_UPSTREAM
 
-    @pytest.mark.skipif(not UPSTREAM.is_dir(), reason="airs-bench submodule not checked out")
+    @_needs_airs_upstream
     def test_every_airs_task_exists_upstream(self):
         names = {p.name for p in self.UPSTREAM.iterdir() if p.is_dir()}
         assert {e.task for e in scope.load("airs")} <= names
 
-    @pytest.mark.skipif(not UPSTREAM.is_dir(), reason="airs-bench submodule not checked out")
+    @_needs_airs_upstream
     def test_metric_anchors_match_metadata_yaml(self):
         for e in scope.load("airs"):
             meta = yaml.safe_load(
