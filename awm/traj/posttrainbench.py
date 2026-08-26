@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
-from hv.traj.schema import MAIN_AGENT, Event, RunMeta, SubAgent, summarize, write_run
+from awm.traj.schema import MAIN_AGENT, Event, RunMeta, SubAgent, summarize, write_run
 
 SOURCE = "posttrainbench"
 
@@ -331,7 +331,7 @@ def build_run(run: RunDir) -> tuple[list[Event], RunMeta]:
     """Convert one run directory in memory, dispatching on the sniffed harness."""
     # Imported here, not at module level: the converters take LineRow and
     # number_events from this module, so the dependency only runs one way.
-    from hv.traj import convert_claude_code, convert_codex
+    from awm.traj import convert_claude_code, convert_codex
 
     harness = detect_harness(run.solve_out)
     rows = list(read_line_stream(run.solve_out))

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from hv.traj.convert_pi import (
+from awm.traj.convert_pi import (
     SPAWN_TOOLS,
     convert_all,
     convert_run,
@@ -27,7 +27,7 @@ from hv.traj.convert_pi import (
     normalize_progression,
     to_event,
 )
-from hv.traj.schema import USAGE_KEYS, read_events, read_meta, validate_stream
+from awm.traj.schema import USAGE_KEYS, read_events, read_meta, validate_stream
 
 CC = "claude-fable-5--claude-code--4ed2e4e07637"
 CODEX = "openai-gpt-5-6-sol--codex--044f97fbcd18"
@@ -299,7 +299,7 @@ def full_release(pi_raw_root):
 
 @pytest.fixture(scope="module")
 def pi_raw_root() -> Path:
-    from hv.paths import raw_dir
+    from awm.paths import raw_dir
 
     root = raw_dir("pi_speedrun")
     if not (root / "traces" / "manifest.json.gz").exists():

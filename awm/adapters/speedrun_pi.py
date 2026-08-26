@@ -26,7 +26,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from hv.paths import REPO_ROOT
+from awm.paths import REPO_ROOT
 
 UPSTREAM_ROOT = REPO_ROOT / "third_party" / "frontier-automated-speedrun"
 UPSTREAM_URL = "https://github.com/PrimeIntellect-ai/frontier-automated-speedrun"
@@ -40,7 +40,7 @@ STAGED = {
 
 HEADER = (
     "<!-- Verbatim copy of {src} from {url} @ {sha} .\n"
-    "     Staged by `python -m hv.adapters.speedrun_pi stage`; not committed, because the\n"
+    "     Staged by `python -m awm.adapters.speedrun_pi stage`; not committed, because the\n"
     "     upstream release carries no LICENSE. Our deviations from the official protocol\n"
     "     are recorded in task.toml, never here. -->\n\n"
 )

@@ -1,0 +1,14 @@
+# The data volume, a symlink to wherever trajectories and datasets live on this
+# machine (see awm/paths.py). Tens of GB — never in git.
+/data
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
+.env

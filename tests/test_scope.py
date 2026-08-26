@@ -13,8 +13,8 @@ import textwrap
 import pytest
 import yaml
 
-from hv import scope
-from hv.paths import REPO_ROOT
+from awm import scope
+from awm.paths import REPO_ROOT
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,7 @@
 # canonical seeds, the 3.27859 mean bar, lowest train_steps wins).
 set -uo pipefail
 
-LOGS_DIR="${HV_SPEEDRUN_LOGS_DIR:-/app/logs}"
+LOGS_DIR="${AWM_SPEEDRUN_LOGS_DIR:-/app/logs}"
 OUT_DIR="/logs/verifier"
 mkdir -p "$OUT_DIR"
 

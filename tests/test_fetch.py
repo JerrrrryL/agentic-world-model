@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from hv.traj import fetch
+from awm.traj import fetch
 
 
 @pytest.fixture

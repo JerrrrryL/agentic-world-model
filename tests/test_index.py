@@ -9,9 +9,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from hv import paths
-from hv.traj import index
-from hv.traj.schema import Event, RunMeta, summarize, write_run
+from awm import paths
+from awm.traj import index
+from awm.traj.schema import Event, RunMeta, summarize, write_run
 
 SOURCE = "pi_speedrun"
 
@@ -185,7 +185,7 @@ def test_run_without_meta_is_skipped(tmp_path: Path) -> None:
 def test_default_events_root_is_the_events_dir(monkeypatch: pytest.MonkeyPatch,
                                                 tmp_path: Path) -> None:
     """A root off by one level makes build() return an empty index in silence."""
-    monkeypatch.setenv("HV_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("AWM_DATA_ROOT", str(tmp_path))
     root = index.default_events_root()
     assert root == paths.events_dir("pi_speedrun").parent
     assert paths.events_dir("pi_speedrun") == root / "pi_speedrun"

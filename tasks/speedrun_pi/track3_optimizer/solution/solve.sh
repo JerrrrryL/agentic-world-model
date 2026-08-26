@@ -8,21 +8,21 @@
 # environment, the training script, the log format and the verifier all work.
 #
 # Smoke knobs (all default to the official protocol):
-#   HV_SPEEDRUN_TRIALS      number of trials              (default 8)
-#   HV_SPEEDRUN_TRAIN_STEPS overrides train_steps in the  (default: leave 3290)
+#   AWM_SPEEDRUN_TRIALS      number of trials              (default 8)
+#   AWM_SPEEDRUN_TRAIN_STEPS overrides train_steps in the  (default: leave 3290)
 #                           editable section of the script
 #   RUN_TIMEOUT             run.sh watchdog               (default 2h)
 set -euo pipefail
 
 cd /app
 
-TRIALS="${HV_SPEEDRUN_TRIALS:-8}"
+TRIALS="${AWM_SPEEDRUN_TRIALS:-8}"
 
-if [ -n "${HV_SPEEDRUN_TRAIN_STEPS:-}" ]; then
+if [ -n "${AWM_SPEEDRUN_TRAIN_STEPS:-}" ]; then
   # `train_steps` is a plain assignment inside the editable section — editing it
   # is exactly what an agent does.  Keep the rest of the script byte-identical so
   # the source hash the verifier groups on stays meaningful.
-  sed -i "s/^    train_steps = 3290$/    train_steps = ${HV_SPEEDRUN_TRAIN_STEPS}/" train_gpt_simple.py
+  sed -i "s/^    train_steps = 3290$/    train_steps = ${AWM_SPEEDRUN_TRAIN_STEPS}/" train_gpt_simple.py
   grep -n "train_steps = " train_gpt_simple.py | head -3
 fi
 

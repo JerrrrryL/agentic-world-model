@@ -28,7 +28,7 @@ from typing import Any, Iterator
 
 import yaml
 
-from hv.paths import REPO_ROOT, scope_dir
+from awm.paths import REPO_ROOT, scope_dir
 
 #: Scope file per benchmark. The slug is the file stem and each entry's ``id`` prefix.
 BENCHMARKS = ("posttrainbench", "airs", "speedrun_pi")

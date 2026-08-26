@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from hv.paths import ensure, raw_dir
+from awm.paths import ensure, raw_dir
 
 PI_REPO = "https://github.com/PrimeIntellect-ai/frontier-automated-speedrun"
 PTB_DATASET = "aisa-group/PostTrainBench-Trajectories"
@@ -243,7 +243,7 @@ def ptb_catalog(dest: Path | None = None) -> dict[str, Any]:
     path = dest / PTB_CATALOG
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} — run `hv traj fetch posttrainbench` (it is in every batch)"
+            f"{path} — run `awm traj fetch posttrainbench` (it is in every batch)"
         )
     return json.loads(path.read_text())
 

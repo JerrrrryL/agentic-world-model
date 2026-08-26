@@ -2,8 +2,8 @@
 # staged into a task directory from the pinned fork under third_party/ by the
 # adapter that owns the task, and regenerating them is one command:
 #
-#   python -m hv.adapters.airs generate --task <Name>
-#   python -m hv.adapters.speedrun_pi stage
+#   python -m awm.adapters.airs generate --task <Name>
+#   python -m awm.adapters.speedrun_pi stage
 #
 # The reason is licensing, not size. airs-bench is CC BY-NC 4.0, whose
 # non-commercial term would otherwise attach to this repository; the Prime

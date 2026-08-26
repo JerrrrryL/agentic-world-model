@@ -65,7 +65,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from hv.traj.schema import Event, RunMeta, SubAgent, summarize, write_run
+from awm.traj.schema import Event, RunMeta, SubAgent, summarize, write_run
 
 SOURCE = "pi_speedrun"
 BENCHMARK = "nanogpt-speedrun"
