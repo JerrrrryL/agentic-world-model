@@ -1,5 +1,5 @@
 [project]
-name = "hierarchy-verifier"
+name = "agentic-world-model"
 version = "0.1.0"
 description = "Hierarchical verifier synthesis for autonomous model development: benchmark scope, unified trajectories, analysis"
 requires-python = ">=3.10"
@@ -14,14 +14,14 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
-hv = "hv.cli:main"
+awm = "awm.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["hv*"]
+include = ["awm*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

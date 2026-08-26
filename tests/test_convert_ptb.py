@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from hv.paths import raw_dir
-from hv.traj import convert_claude_code, convert_codex
-from hv.traj.posttrainbench import (
+from awm.paths import raw_dir
+from awm.traj import convert_claude_code, convert_codex
+from awm.traj.posttrainbench import (
     RunDir,
     build_run,
     convert_run_dir,
@@ -26,7 +26,7 @@ from hv.traj.posttrainbench import (
     parse_run_dir_name,
     read_line_stream,
 )
-from hv.traj.schema import MAIN_AGENT, read_events, read_meta, validate_stream
+from awm.traj.schema import MAIN_AGENT, read_events, read_meta, validate_stream
 
 CLAUDE_CFG = "claude_non_api_max_claude-opus-4-8_10h_run1"
 CLAUDE_RUN = "gsm8k_Qwen_Qwen3-1.7B-Base_17315721"
@@ -35,9 +35,9 @@ CODEX_RUN = "gsm8k_Qwen_Qwen3-1.7B-Base_16934887"
 
 #: The two complete runs the acceptance numbers below were measured on. They are
 #: too large to commit, so these tests read them from the fetched release and
-#: skip when it is absent. HV_PTB_SAMPLES points at a directory holding
+#: skip when it is absent. AWM_PTB_SAMPLES points at a directory holding
 #: ``run_claude/`` and ``run_codex/`` instead.
-FULL_SAMPLES = Path(os.environ["HV_PTB_SAMPLES"]) if "HV_PTB_SAMPLES" in os.environ else None
+FULL_SAMPLES = Path(os.environ["AWM_PTB_SAMPLES"]) if "AWM_PTB_SAMPLES" in os.environ else None
 
 
 @pytest.fixture

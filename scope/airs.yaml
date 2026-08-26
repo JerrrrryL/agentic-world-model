@@ -8,7 +8,7 @@
 # prompting, fails G1); DuoRC is in (SOTA is ALBERT finetuning).
 #
 # The metric values are copied from each task's upstream metadata.yaml and
-# `hv scope check` reads them back to prove they still agree, so never edit them
+# `awm scope check` reads them back to prove they still agree, so never edit them
 # by hand. reference is the published SOTA, s_min the worst observed score, s_opt
 # the theoretical optimum: the three anchors the normalised score is built from.
 #

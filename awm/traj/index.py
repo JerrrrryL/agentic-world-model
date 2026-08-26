@@ -36,8 +36,8 @@ from typing import Any
 
 import pandas as pd
 
-from hv import paths
-from hv.traj.schema import RunMeta, iter_runs, read_meta
+from awm import paths
+from awm.traj.schema import RunMeta, iter_runs, read_meta
 
 #: Column -> pandas dtype, in table order. This is the whole contract of the index.
 DTYPES: dict[str, str] = {

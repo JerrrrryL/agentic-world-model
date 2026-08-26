@@ -1,6 +1,6 @@
 """Trajectory ingestion: fetch upstream releases, convert them to the v0 event schema."""
 
-from hv.traj.schema import (  # noqa: F401
+from awm.traj.schema import (  # noqa: F401
     MAIN_AGENT,
     SCHEMA_VERSION,
     Event,

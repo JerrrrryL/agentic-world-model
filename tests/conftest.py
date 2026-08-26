@@ -2,7 +2,7 @@
 
 Tests run against two kinds of input. Committed samples under ``tests/data/``
 are truncated real trajectories — a few dozen events each — so the suite runs
-anywhere with no data volume mounted. The full releases under ``HV_DATA_ROOT``
+anywhere with no data volume mounted. The full releases under ``AWM_DATA_ROOT``
 are only used by tests marked ``needs_data``, which skip when absent.
 """
 
@@ -12,14 +12,14 @@ from pathlib import Path
 
 import pytest
 
-from hv.paths import raw_dir
+from awm.paths import raw_dir
 
 DATA = Path(__file__).parent / "data"
 
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
-        "markers", "needs_data: requires the full upstream releases under HV_DATA_ROOT"
+        "markers", "needs_data: requires the full upstream releases under AWM_DATA_ROOT"
     )
 
 
@@ -31,7 +31,7 @@ def sample_dir() -> Path:
 
 def _require(path: Path, what: str) -> Path:
     if not path.exists():
-        pytest.skip(f"{what} not fetched: {path} (run `hv traj fetch`)")
+        pytest.skip(f"{what} not fetched: {path} (run `awm traj fetch`)")
     return path
 
 

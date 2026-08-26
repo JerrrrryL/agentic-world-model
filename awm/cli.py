@@ -1,4 +1,4 @@
-"""Command line entry point: ``hv``.
+"""Command line entry point: ``awm``.
 
 Thin wiring over the library. Everything it prints is meant to be readable in a
 terminal and greppable in a log; anything a program should consume comes out of
@@ -11,11 +11,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from hv import paths
+from awm import paths
 
 
 def _fetch(args: argparse.Namespace) -> int:
-    from hv.traj import fetch
+    from awm.traj import fetch
 
     sources = list(fetch.FETCHERS) if args.source == "all" else [args.source]
     for source in sources:
@@ -35,11 +35,11 @@ def _fetch(args: argparse.Namespace) -> int:
 
 
 def _convert_pi(limit: int | None) -> int:
-    from hv.traj import convert_pi
+    from awm.traj import convert_pi
 
     raw = paths.raw_dir("pi_speedrun")
     if not (raw / "traces").is_dir():
-        print(f"pi_speedrun not fetched at {raw} — run `hv traj fetch pi_speedrun`", file=sys.stderr)
+        print(f"pi_speedrun not fetched at {raw} — run `awm traj fetch pi_speedrun`", file=sys.stderr)
         return 1
     metas = convert_pi.convert_all(raw, paths.events_dir("pi_speedrun"), limit=limit)
     print(f"pi_speedrun: {len(metas)} runs -> {paths.events_dir('pi_speedrun')}")
@@ -47,11 +47,11 @@ def _convert_pi(limit: int | None) -> int:
 
 
 def _convert_ptb(limit: int | None) -> int:
-    from hv.traj import posttrainbench as ptb
+    from awm.traj import posttrainbench as ptb
 
     raw = paths.raw_dir("posttrainbench")
     if not raw.is_dir():
-        print(f"posttrainbench not fetched at {raw} — run `hv traj fetch posttrainbench`",
+        print(f"posttrainbench not fetched at {raw} — run `awm traj fetch posttrainbench`",
               file=sys.stderr)
         return 1
     out = paths.events_dir("posttrainbench")
@@ -98,8 +98,8 @@ def _run(args: argparse.Namespace) -> int:
         return 1
 
     env = dict(os.environ)
-    env.setdefault("HV_AIRS_PREPARED", str(paths.data_root().resolve() / "assets/airs/prepared"))
-    env.setdefault("HV_FINEWEB_DIR", str(paths.data_root().resolve() / "assets/fineweb10B"))
+    env.setdefault("AWM_AIRS_PREPARED", str(paths.data_root().resolve() / "assets/airs/prepared"))
+    env.setdefault("AWM_FINEWEB_DIR", str(paths.data_root().resolve() / "assets/fineweb10B"))
 
     cmd = [args.harbor, "run", "-p", str(task_dir), "-a", args.agent, "-o", str(args.jobs_dir)]
     if args.model:
@@ -110,7 +110,7 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _index(args: argparse.Namespace) -> int:
-    from hv.traj import index
+    from awm.traj import index
 
     df = index.build()
     path = index.save(df)
@@ -123,7 +123,7 @@ def _index(args: argparse.Namespace) -> int:
 
 
 def _scope_list(args: argparse.Namespace) -> int:
-    from hv import scope
+    from awm import scope
 
     entries = scope.load(args.bench)
     if args.self_run:
@@ -142,7 +142,7 @@ def _scope_list(args: argparse.Namespace) -> int:
 
 
 def _scope_check(args: argparse.Namespace) -> int:
-    from hv import scope
+    from awm import scope
 
     issues = scope.check()
     for issue in issues:
@@ -152,8 +152,8 @@ def _scope_check(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="hv", description=__doc__)
-    p.add_argument("--data-root", type=Path, help="override HV_DATA_ROOT for this call")
+    p = argparse.ArgumentParser(prog="awm", description=__doc__)
+    p.add_argument("--data-root", type=Path, help="override AWM_DATA_ROOT for this call")
     sub = p.add_subparsers(dest="group", required=True)
 
     traj = sub.add_parser("traj", help="fetch and convert trajectories").add_subparsers(
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.data_root:
         import os
 
-        os.environ["HV_DATA_ROOT"] = str(args.data_root)
+        os.environ["AWM_DATA_ROOT"] = str(args.data_root)
     return args.func(args)
 
 
