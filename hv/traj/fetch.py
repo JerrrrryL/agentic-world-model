@@ -10,6 +10,8 @@ Sizes, measured 2026-08-24:
     agent configurations across the five core benchmarks, and only the files an
     analysis needs (0.59 GB): the ``task/`` workspace snapshots and the
     multi-hundred-MB ``error.log``s stay upstream until something needs them.
+    Every batch also takes ``viewer_data/index.json`` (1.1 MB) — see
+    ``PTB_CATALOG``.
 """
 
 from __future__ import annotations
@@ -56,8 +58,24 @@ PTB_DEFAULT_CONFIGS = (
 #: published file list: all 62 configurations, all 7 benchmarks, trace files
 #: only, is 7.30 GB / 1,842 runs — the whole analysable corpus. The other 21.6 GB
 #: of the release is workspace snapshots (10.6 GB), pre-parsed viewer JSON
-#: (5.3 GB, redundant with the traces) and error logs (1.5 GB).
+#: (5.3 GB, redundant with the traces — bar ``PTB_CATALOG``) and error logs
+#: (1.5 GB).
 ALL_CONFIGS: tuple[str, ...] = ()
+
+#: The one file under ``viewer_data/`` worth having: the catalogue that backs
+#: posttrainbench.com/traces. 1.1 MB, and the only place upstream publishes a
+#: run's ``accuracy``, ``total_cost_usd``, ``num_turns``, ``duration_ms``,
+#: ``trace_format`` and contamination verdict in one table — reconstructing that
+#: from the traces means parsing all 7.3 GB. The other ~3,000 files in that
+#: directory are per-run pre-parsed renderings (5.3 GB, redundant with the
+#: traces) and stay upstream; ``ptb_select`` refuses all of them, so this is
+#: fetched alongside a selection rather than through it.
+#:
+#: It is also a *partial* index: 1,509 of the release's 1,842 run directories.
+#: The 333 it omits are the unjudged ones (10% carry ``judgement_gpt5_4.json``
+#: against 98% of the catalogued), not the failed ones — most have a full trace
+#: and a score. Treat it as metadata, never as the run population.
+PTB_CATALOG = "viewer_data/index.json"
 
 
 @dataclass
@@ -168,10 +186,15 @@ def fetch_posttrainbench(
     files: tuple[str, ...] = PTB_RUN_FILES,
     workers: int = 12,
     progress_every: int = 50,
+    catalog: bool = True,
 ) -> FetchResult:
     """Download a subset of the PostTrainBench trajectory dataset.
 
     Apache-2.0 and not gated, so no token is required; one is used if present.
+
+    ``catalog`` adds ``PTB_CATALOG`` to the batch. It is on by default and costs
+    1.1 MB: no subset of the traces reproduces it, and the smallest batch wants
+    it as much as the largest. Pass ``catalog=False`` for a traces-only mirror.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -185,6 +208,11 @@ def fetch_posttrainbench(
         f"posttrainbench: {len(wanted)} files selected "
         f"({sum(s for _, s in wanted) / 1e9:.2f} GB), {len(todo)} to download"
     )
+    # Outside the selection on purpose: ptb_select's job is to keep viewer_data
+    # out, and it must keep doing that whatever configs it is handed.
+    if catalog and not (dest / PTB_CATALOG).exists():
+        todo.append((PTB_CATALOG, 0))
+        print(f"  + {PTB_CATALOG}")
 
     def one(path: str) -> str:
         return hf_hub_download(
@@ -202,6 +230,22 @@ def fetch_posttrainbench(
 
     n, total = _tree_size(dest)
     return FetchResult("posttrainbench", dest, n, total)
+
+
+def ptb_catalog(dest: Path | None = None) -> dict[str, Any]:
+    """Read the fetched ``PTB_CATALOG``.
+
+    Raises ``FileNotFoundError`` rather than fetching, so an analysis never
+    silently turns into a download. ``runs`` is the row list; ``experiments``
+    and ``benchmarks`` are the facet lists the site's filters are built from.
+    """
+    dest = dest or raw_dir("posttrainbench")
+    path = dest / PTB_CATALOG
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} — run `hv traj fetch posttrainbench` (it is in every batch)"
+        )
+    return json.loads(path.read_text())
 
 
 FETCHERS = {"pi_speedrun": fetch_pi, "posttrainbench": fetch_posttrainbench}

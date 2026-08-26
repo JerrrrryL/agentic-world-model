@@ -78,10 +78,21 @@ data/
 | **PostTrainBench** (traces) | 1,842 | **7.3 GB** | 62 agent configurations × 7 benchmarks. This is the analysable corpus |
 | — default first batch | 82 | 0.6 GB | 4 configurations × the 5 objectively-scored benchmarks |
 | — core benchmarks, all configs | 1,260 | 4.9 GB | drops the two LLM-judged benchmarks |
+| — `viewer_data/index.json` | 1,509 | **1.1 MB** | The catalogue behind posttrainbench.com/traces. Comes with every batch |
+
+`index.json` is the only place upstream publishes accuracy, `total_cost_usd`,
+`num_turns`, `duration_ms`, `trace_format` and the contamination verdict as one
+table — $32,533 and 5,606 GPU-hours over the corpus — so it is fetched
+unconditionally and read with `fetch.ptb_catalog()`. Read it as metadata, not as
+the run population: it covers 1,509 of the 1,842 run directories, and the 333 it
+omits are the **unjudged** ones (10% carry `judgement_gpt5_4.json` against 98% of
+the catalogued), not the failed ones. Most of those have a full trace and a
+score, and none of them are visible from the site.
 
 The rest of the 28.9 GB PostTrainBench release is left upstream: workspace
-snapshots (10.6 GB — the code the agents wrote, worth fetching later), upstream's
-pre-parsed viewer JSON (5.3 GB, redundant with the traces) and error logs (1.5 GB).
+snapshots (10.6 GB — the code the agents wrote, worth fetching later), the other
+~3,000 pre-parsed viewer JSON files (5.3 GB, redundant with the traces) and error
+logs (1.5 GB).
 
 Per benchmark, trace files only: bfcl 1.31 GB / 288 runs, arenahardwriting 1.23 /
 287, healthbench 1.17 / 295, gpqamain 1.01 / 241, humaneval 0.89 / 243, gsm8k
