@@ -8,7 +8,7 @@
 version = "1.4"
 
 [metadata]
-author = "hierarchy-verifier"
+author = "agentic-world-model"
 difficulty = "hard"
 domain = "model_development"
 library = "pytorch"
@@ -32,7 +32,7 @@ storage_mb = 40960
 
 # DEVIATION: the official protocol is a full 8xH200 node.  This machine has 4x
 # RTX 6000 Ada (48 GB, sm_89), so the effective GPU count is parameterised
-# through environment/docker-compose.yaml (${HV_SPEEDRUN_GPUS}).
+# through environment/docker-compose.yaml (${AWM_SPEEDRUN_GPUS}).
 # train_gpt_simple.py asserts `8 % world_size == 0`, so 1, 2, 4 and 8 are the
 # only legal values.
 #
@@ -56,16 +56,16 @@ network_mode = "no-network"
 
 [environment.env]
 # Resolved from the host at run time and used for compose interpolation.
-HV_SPEEDRUN_GPUS = "${HV_SPEEDRUN_GPUS:-4}"
-HV_FINEWEB_DIR = "${HV_FINEWEB_DIR:-/data/gangda/hv/assets/fineweb10B}"
+AWM_SPEEDRUN_GPUS = "${AWM_SPEEDRUN_GPUS:-4}"
+AWM_FINEWEB_DIR = "${AWM_FINEWEB_DIR:-/data/gangda/hv/assets/fineweb10B}"
 
 [solution]
 # The "solution" is the unmodified baseline: it produces a *valid* record set
 # that scores exactly 0.0 (train_steps == baseline).  Its job is to prove the
 # environment, the log format and the verifier, not to solve the task.
-# SMOKE OVERRIDE: HV_SPEEDRUN_TRIALS / HV_SPEEDRUN_TRAIN_STEPS (see solve.sh).
+# SMOKE OVERRIDE: AWM_SPEEDRUN_TRIALS / AWM_SPEEDRUN_TRAIN_STEPS (see solve.sh).
 
-# hierarchy-verifier bookkeeping.  Harbor ignores unknown sections; the verifier
+# agentic-world-model bookkeeping.  Harbor ignores unknown sections; the verifier
 # hard-codes the same anchors (tests/verify_record.py), which stay the source of
 # truth for scoring.
 [optimization]

@@ -1,11 +1,11 @@
 # Merged by Harbor on top of its own build/prebuilt compose (service name must be
 # `main`).  Two jobs: reserve the GPUs, and mount the FineWeb shards read-only.
 #
-#   HV_SPEEDRUN_GPUS      how many GPUs to reserve.  Official protocol = 8.
+#   AWM_SPEEDRUN_GPUS      how many GPUs to reserve.  Official protocol = 8.
 #                         This machine has 4 (and often fewer are free), so the
 #                         default is 4.  train_gpt_simple.py asserts
 #                         `8 % world_size == 0`, so only 1, 2, 4, 8 are legal.
-#   HV_FINEWEB_DIR        host directory holding fineweb_{train,val}_*.bin.
+#   AWM_FINEWEB_DIR        host directory holding fineweb_{train,val}_*.bin.
 #
 # Data is NEVER baked into the image: the shards are ~200 MB each and read-only,
 # exactly as in PI's sandbox (`data/fineweb10B -> <runner-home>/fineweb10B`,
@@ -18,19 +18,19 @@ services:
       memlock: -1
       stack: 67108864
     volumes:
-      - ${HV_FINEWEB_DIR:-/data/gangda/hv/assets/fineweb10B}:/app/data/fineweb10B:ro
-    # HV_SPEEDRUN_DEVICES pins specific GPUs ("0" or "0,1,2,3"). It exists because
+      - ${AWM_FINEWEB_DIR:-/data/gangda/hv/assets/fineweb10B}:/app/data/fineweb10B:ro
+    # AWM_SPEEDRUN_DEVICES pins specific GPUs ("0" or "0,1,2,3"). It exists because
     # this is a shared box: `count: N` lets Docker hand out whichever GPUs it likes,
     # and picking one another user's vLLM is already holding gives a CUDA OOM
     # several minutes into training rather than a clean failure at startup.
     # `device_ids` and `count` are mutually exclusive in compose, so the count form
     # lives in the sibling profile below and is selected by leaving DEVICES unset.
     environment:
-      NVIDIA_VISIBLE_DEVICES: ${HV_SPEEDRUN_DEVICES:-all}
+      NVIDIA_VISIBLE_DEVICES: ${AWM_SPEEDRUN_DEVICES:-all}
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: ${HV_SPEEDRUN_GPUS:-4}
+              count: ${AWM_SPEEDRUN_GPUS:-4}
               capabilities: [gpu]

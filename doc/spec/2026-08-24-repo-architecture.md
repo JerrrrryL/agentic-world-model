@@ -13,14 +13,14 @@
 | 基准 | 上游给了什么 | 运行方式 |
 |---|---|---|
 | PostTrainBench | 题目 + 容器定义 + 运行器 `run_task.sh` + agent 接口 `agents/<name>/solve.sh` | **原生**,submodule 指向我们带补丁的 fork 分支 |
-| AIRS-Bench | 只有题目(prompt、prepare、evaluate、metadata);公开版 aira-dojo 跑不了 AIRS | **Harbor**,`hv/adapters/airs.py` 从 20 个 `metadata.yaml` 生成 task 目录 |
+| AIRS-Bench | 只有题目(prompt、prepare、evaluate、metadata);公开版 aira-dojo 跑不了 AIRS | **Harbor**,`awm/adapters/airs.py` 从 20 个 `metadata.yaml` 生成 task 目录 |
 | Speedrun(PI) | 题目(program.md + baseline 脚本)+ 41 条轨迹;run.sh / verify.py 可从轨迹恢复;launcher 与沙箱未开源 | **Harbor**,`tasks/speedrun_pi/track3_optimizer/` 手写(只有一题) |
 
 原生跑 PostTrainBench 的理由是可比性:与 HF 上 1,842 条公开轨迹同 prompt、同容器、同 `timer.sh`、同 `system_monitor.log`、同原生 CLI JSONL,自跑数据与公开数据可以直接合并分析。什么时候改用 Harbor:官方合并其 Harbor 适配器 PR #8 并以此出数据,或我们需要在同一批机器上混跑三家统一调度。
 
 **D2 adapter 的定义**:给没有运行器的基准补运行器,借 Harbor 的 task 目录格式(task.toml + instruction.md + environment/ + tests/test.sh)来写,不重写评分逻辑——`tests/test.sh` 调用上游自己的 `evaluate.py`。只有任务成"族"时才写生成脚本(AIRS 20 题);单题手写(PI)。
 
-**D3 统一发生在两层**:`scope/`(哪些任务算数,机器可读)与 `/data/hv/traj/events/`(所有轨迹转成同一事件流)。启动命令允许两条路(`run_task.sh` / `harbor run`),由薄壳 `hv run <task_id>` 分发。
+**D3 统一发生在两层**:`scope/`(哪些任务算数,机器可读)与 `/data/hv/traj/events/`(所有轨迹转成同一事件流)。启动命令允许两条路(`run_task.sh` / `harbor run`),由薄壳 `awm run <task_id>` 分发。
 
 **D4 我们的 agent 做成 CLI 可执行文件**(形如 claude-code),使 PostTrainBench 的 `solve.sh` 与 Harbor 的 `BaseInstalledAgent` 包装都是一行。Phase 2 才建。
 
@@ -44,28 +44,28 @@ submodule 的 `origin` 指向 fork、`upstream` 指向原仓,同步上游用 `gi
 ## 三、仓库布局
 
 ```
-hierarchy-verifier/
+agentic-world-model/
 ├── doc/                      # 现有文档 + spec/ + reference/harness_facts/
 ├── third_party/              # submodule:PostTrainBench(fork 补丁分支)、airs-bench
 ├── tasks/                    # Harbor task 目录
 │   ├── airs/<task>/          # adapter 生成,scope 内 8 题(GPU-heavy,2026-08-25 收窄)
 │   └── speedrun_pi/track3_optimizer/   # 手写
 ├── scope/                    # posttrainbench.yaml、airs.yaml、speedrun_pi.yaml + schema.json
-├── hv/                       # 唯一 Python 包:核心方法全部在此
+├── awm/                       # 唯一 Python 包:核心方法全部在此
 │   ├── agent/                # Phase 2:自研 agent CLI(实验侧方法)+ shims/(PostTrainBench 的 solve.sh、Harbor 的 InstalledAgent 包装)
 │   ├── adapters/airs.py
 │   ├── traj/                 # schema.py、fetch.py、convert_{claude_code,codex,pi,atif}.py、index.py
 │   ├── analysis/             # Phase 3:层级恢复、双层拆分、verifier(分析侧方法)
-│   └── cli.py                # hv traj fetch|convert|index、hv scope list、hv run
+│   └── cli.py                # awm traj fetch|convert|index、awm scope list、awm run
 ├── tests/                    # pytest;tests/data/ 每源一条截断样本
 └── pyproject.toml            # uv;harbor 作 pip 依赖
 ```
 
-不设:顶层 `adapters/`、`agents/`、`fixtures/`、`data/manifests/`、`derived/`、`assets/`;`hv/agent/` 到 Phase 2 再建。
+不设:顶层 `adapters/`、`agents/`、`fixtures/`、`data/manifests/`、`derived/`、`assets/`;`awm/agent/` 到 Phase 2 再建。
 
 ## 四、数据布局(`data/` 软链)
 
-仓库里的 `data/` 是一个 **gitignore 掉的软链**,指向本机实际存放位置(当前 `/data2/gangda/hv`,14 TB 盘)。代码和文档只认这一个路径,换机器只改软链;`HV_DATA_ROOT` 可覆盖(测试用它指向空目录跑)。新克隆需要 `ln -s <volume> data` 一次。
+仓库里的 `data/` 是一个 **gitignore 掉的软链**,指向本机实际存放位置(当前 `/data2/gangda/hv`,14 TB 盘)。代码和文档只认这一个路径,换机器只改软链;`AWM_DATA_ROOT` 可覆盖(测试用它指向空目录跑)。新克隆需要 `ln -s <volume> data` 一次。
 
 ```
 data/
@@ -121,7 +121,7 @@ tasks:
 
 字段共七个:`id`、`family`、`metric`(名称、方向,以及归一化要的 baseline / reference / s_min / s_opt 锚点)、`resources`、`budget`、`variants`(该任务按此列表逐个跑一遍,PostTrainBench 的 4 个 base 模型即是)、`self_run`(默认真;为假表示只分析其公开轨迹、不花 GPU,两个 LLM 评审基准如此)。文件里只列在 scope 内的任务,所以没有 `verdict`——待定的(AIRS 的 DuoRC / FinQA,G1 未落实)留在文档里,定了再进来。
 
-`hv scope list [--bench X] [--self-run]` 列清单;`hv scope check` 做三项对账:AIRS 的指标锚点 vs 上游 `metadata.yaml`(它们是拷贝,必须防漂移)、任务数 vs 文档 3.2/3.4 的声明、GPU·h vs 文档 5.1 的预算表。原先的 154 行 JSON Schema 一并删除——7 个字段不值得一个 schema 解释器,校验直接写在 `hv/scope.py` 里。
+`awm scope list [--bench X] [--self-run]` 列清单;`awm scope check` 做三项对账:AIRS 的指标锚点 vs 上游 `metadata.yaml`(它们是拷贝,必须防漂移)、任务数 vs 文档 3.2/3.4 的声明、GPU·h vs 文档 5.1 的预算表。原先的 154 行 JSON Schema 一并删除——7 个字段不值得一个 schema 解释器,校验直接写在 `awm/scope.py` 里。
 
 ## 七、三家接入要点
 
@@ -129,7 +129,7 @@ tasks:
 
 - 现成:prompt 模板与渲染、7 个评分器、chat 模板、`containers/standard.def`、去污染与模型身份两个确定性检查脚本、trace 解析器、28.9 GB 公开轨迹(1,842 run,Apache-2.0,不 gated)。
 - 补丁(fork 分支):裁判的 ChatGPT-Pro 登录预检改为 API-key 或可关闭;`check_cuda.py` 的 "H100" 字符串检查按实验机放宽;AIME `endswith` 评分 bug(#44)与评测镜像 transformers 版本不一致(#65)。
-- 我们写:`hv/agent/shims/posttrainbench/{solve.sh,api_keys.json}`(接入时拷入 submodule 的 `agents/hv/`);绕过 HTCondor 直接调 `run_task.sh` 的多机队列脚本;`test_data.json` 下载(GPQA 与 gemma gated,需 HF token)。
+- 我们写:`awm/agent/shims/posttrainbench/{solve.sh,api_keys.json}`(接入时拷入 submodule 的 `agents/hv/`);绕过 HTCondor 直接调 `run_task.sh` 的多机队列脚本;`test_data.json` 下载(GPQA 与 gemma gated,需 HF token)。
 - 口径:官方 HF 缓存(14 模型 + 约 150 数据集)第一版不预热,agent 自行下载(规则允许无限制上网);单次解码评分噪声大,自跑至少 3 次取均值;首版只跑确定性检查,LLM 裁判后置。
 
 ### AIRS-Bench(Harbor + adapter)
@@ -148,11 +148,11 @@ tasks:
 
 ## 八、阶段与验收
 
-**Phase 0(本机,零 GPU)**:骨架 + submodule;`scope/` 三个 yaml 与文档表格对账通过;`hv traj fetch` 拉下 PI 41 条与 PostTrainBench 首批(20 核心配置 × {claude-code, codex},约 2–4 GB);三个转换器产出 `events/`,PI 每条 run 的事件数与 manifest `n_events` 一致,PostTrainBench 每条 run 的 tool_use 数与 `solve_parsed.txt` 一致;`tests/data/` 样本 + pytest 通过。对应待办 4、13。
+**Phase 0(本机,零 GPU)**:骨架 + submodule;`scope/` 三个 yaml 与文档表格对账通过;`awm traj fetch` 拉下 PI 41 条与 PostTrainBench 首批(20 核心配置 × {claude-code, codex},约 2–4 GB);三个转换器产出 `events/`,PI 每条 run 的事件数与 manifest `n_events` 一致,PostTrainBench 每条 run 的 tool_use 数与 `solve_parsed.txt` 一致;`tests/data/` 样本 + pytest 通过。对应待办 4、13。
 
 **Phase 1(实验机)**:验证 Harbor 0.22.0 的 GPU 直通、容器内多卡 torchrun、compose 卷挂载、`allow_internet=false` 下容器内 agent 出网;AIRS adapter 生成 scope 内 8 题;冒烟仍用 SICK 目录(已生成,出 scope 后保留作样例)用 claude-code 端到端跑出 `reward.json`;PostTrainBench 原生 mock prompt 端到端跑通;PI task 目录 1-trial baseline 复现 `step:3290/3290 val_loss≈3.277`。对应待办 14。
 
-**Phase 2**:`hv` agent CLI + 两种包装;S1 最小自跑。
+**Phase 2**:`awm` agent CLI + 两种包装;S1 最小自跑。
 
 **Phase 3**:层级恢复指标(待办 5)、双层拆分(待办 12),先在 Tier A 轨迹上做。
 
@@ -165,7 +165,7 @@ tasks:
 
 ## 十、Phase 0 实施记录(2026-08-24 完成)
 
-**交付**:`hv/` 2,700 行 + `tests/` 1,450 行;134 项测试通过(挂载数据卷),无数据卷时 128 通过 + 6 跳过;`ruff` 干净。
+**交付**:`awm/` 2,700 行 + `tests/` 1,450 行;134 项测试通过(挂载数据卷),无数据卷时 128 通过 + 6 跳过;`ruff` 干净。
 
 **验收结果**(数字均为独立重算,未采信实现者自述):
 
@@ -183,7 +183,7 @@ tasks:
 
 **与本文档原方案的偏差**:
 
-1. 数据根改为 `/data/gangda/hv`(`/data` 是多用户共享盘),由 `HV_DATA_ROOT` 覆盖。
+1. 数据根改为 `/data/gangda/hv`(`/data` 是多用户共享盘),由 `AWM_DATA_ROOT` 覆盖。
 2. `snapshot_download(allow_patterns=...)` 在 218k 文件的仓库上十分钟不落盘,改为自己分页列表(缓存)+ 精确并行 `hf_hub_download`:463 文件 / 0.59 GB 约一分钟。
 3. 事件 schema 相对第五节增加两个字段:`tool_use_id`(结果与子 agent 的溯源锚点)、`truncated`(上游截断标记);并明确 `USAGE_KEYS` 的口径——`in` 是否含 `cache_read` 由各 harness 决定、我们不调和,跨 harness 求和无意义。
 4. `RunMeta.flags` 收紧为"只放判定":溯源进 `source_paths`、描述性元数据进 `extra`。否则 `judgement_file`、`fidelity=full` 这类值会把 123 条里的 91 条误标为有问题(修复后为 6 条:PI 3 条 `validity=flagged`、PTB 3 条污染)。

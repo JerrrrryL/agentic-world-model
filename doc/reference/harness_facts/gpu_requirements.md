@@ -1,13 +1,13 @@
 # Harness 事实清单:PoC 10 题逐题 GPU 需求
 
-**用途**:PoC 自跑范围(3 个 benchmark、10 道题)的硬件事实——GPU 型号/数量、单次训练时长、墙钟预算、显存、存储、harness 与已知的坑。估计值标 ≈(按 1×H100/H200 折算);官方协议为准绳。范围决策见《benchmark 案例与数据清单》二 / 3.2 / 3.4 / 3.5,机器可读清单在 `scope/*.yaml`(`hv scope check` 对账);核定日期 2026-08-25。
+**用途**:PoC 自跑范围(3 个 benchmark、10 道题)的硬件事实——GPU 型号/数量、单次训练时长、墙钟预算、显存、存储、harness 与已知的坑。估计值标 ≈(按 1×H100/H200 折算);官方协议为准绳。范围决策见《benchmark 案例与数据清单》二 / 3.2 / 3.4 / 3.5,机器可读清单在 `scope/*.yaml`(`awm scope check` 对账);核定日期 2026-08-25。
 
 ## 0. 汇总
 
 | Benchmark | 题数 | 每题硬件 | 墙钟/题 | GPU·h / seed | harness |
 |---|---|---|---|---|---|
 | NanoGPT Speedrun(PI 设定) | 1 | 8×H200(H100 可替) | 24h(PoC 切片;官方 ≥3 seed、续跑 ≤8 天) | 192 | program.md 协议,自建 run.sh/verify.py |
-| AIRS-Bench(GPU-heavy 8 题) | 8 | 1×H100/H200 | 24h(官方协议) | 192 | Harbor + `hv/adapters/airs.py`(公开版 aira-dojo 跑不了 AIRS) |
+| AIRS-Bench(GPU-heavy 8 题) | 8 | 1×H100/H200 | 24h(官方协议) | 192 | Harbor + `awm/adapters/airs.py`(公开版 aira-dojo 跑不了 AIRS) |
 | PostTrainBench | 1 配置 | 1×H100 | 10h(官方协议) | 10 | 官方 harness |
 | **合计** | **10** | — | — | **≈394 / seed** | — |
 
@@ -25,7 +25,7 @@
 ## 2. AIRS-Bench GPU-heavy 8 题
 
 官方协议:每 run 24h × 1×H200,≥10 seeds;允许联网 + 193 个 ≤2021 缓存预训练模型(最新为 deberta-v3-large);agent 从零写码、训模、产 `submission.csv`。
-harness:论文用 aira-dojo Greedy(搜索树 journal)与 MLGym ReAct(.traj),但**公开版 aira-dojo 跑不了 AIRS**(任务注册表只有 MLE-bench);我们经 Harbor + `hv/adapters/airs.py` 从 `metadata.yaml` 生成 task 目录自跑,只评最终 `submission.csv`(MLGym 口径),搜索结构来自 agent 遥测。官方轨迹未发布(S2=0),须自产。
+harness:论文用 aira-dojo Greedy(搜索树 journal)与 MLGym ReAct(.traj),但**公开版 aira-dojo 跑不了 AIRS**(任务注册表只有 MLE-bench);我们经 Harbor + `awm/adapters/airs.py` 从 `metadata.yaml` 生成 task 目录自跑,只评最终 `submission.csv`(MLGym 口径),搜索结构来自 agent 遥测。官方轨迹未发布(S2=0),须自产。
 
 | # | 任务 | 训练/测试集(大小) | SOTA(方法 / 分数) | 逼近路径 | 单次训练 ≈ | 显存 ≈ | 24h 完整实验数 |
 |---|---|---|---|---|---|---|---|

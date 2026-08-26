@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hierarchy-verifier record checker for the PI NanoGPT optimizer speedrun.
+"""agentic-world-model record checker for the PI NanoGPT optimizer speedrun.
 
 Why this exists
 ---------------

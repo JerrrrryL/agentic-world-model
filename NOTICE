@@ -46,7 +46,7 @@ Scope note — third-party material is NOT covered by the License above:
     are the work of their own authors and carry their own licenses. They are
     referenced, never vendored.
 
-  * Published agent trajectory releases that `hv traj fetch` downloads, and
+  * Published agent trajectory releases that `awm traj fetch` downloads, and
     the datasets, model weights, container images, and external services that
     the tasks mount or invoke, are licensed separately by their publishers.
 

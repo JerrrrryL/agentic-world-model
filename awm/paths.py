@@ -10,7 +10,7 @@ different. A fresh clone creates it once:
 
     ln -s /data2/gangda/hv data
 
-``HV_DATA_ROOT`` overrides the symlink, which is what the tests use to run
+``AWM_DATA_ROOT`` overrides the symlink, which is what the tests use to run
 against an empty volume.
 """
 
@@ -29,12 +29,12 @@ MACHINE_DATA_ROOT = Path("/data2/gangda/hv")
 
 
 def data_root(require: bool = False) -> Path:
-    root = Path(os.environ.get("HV_DATA_ROOT", DEFAULT_DATA_ROOT))
+    root = Path(os.environ.get("AWM_DATA_ROOT", DEFAULT_DATA_ROOT))
     if require and not root.exists():
         raise FileNotFoundError(
             f"data volume not found at {root}. Create the symlink with\n"
             f"    ln -s {MACHINE_DATA_ROOT} {DEFAULT_DATA_ROOT}\n"
-            "or point HV_DATA_ROOT elsewhere."
+            "or point AWM_DATA_ROOT elsewhere."
         )
     return root
 

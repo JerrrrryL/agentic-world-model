@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from hv.traj.schema import (
+from awm.traj.schema import (
     MAIN_AGENT,
     Event,
     RunMeta,

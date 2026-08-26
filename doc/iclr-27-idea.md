@@ -239,7 +239,7 @@ shipped in each task's `metadata.yaml` (**VERIFIED**, confirmed by the maintaine
 issue #6), but Meta's per-run raw scores are **not** released, and no
 normalisation/aggregation code ships in the repo. So we can compute NS consistently for *our own*
 runs but cannot reproduce theirs. **Beating RPM means reproducing RPM ourselves as a control
-arm** under our anchors, our harness (Harbor + `hv/adapters/airs.py`) and our seeds. Citing their
+arm** under our anchors, our harness (Harbor + `awm/adapters/airs.py`) and our seeds. Citing their
 published number as the baseline is not a delta.
 
 **Backbone parity is mandatory.** RPM deliberately used Qwen3.6-27B for *both* the candidate
