@@ -72,6 +72,8 @@ def test_parse_agent_config():
         "config": "non_api_max",
         "model": "claude-opus-4-8",
         "hours": 10.0,
+        "gpus": None,
+        "experiment": "run1",
         "run_index": 1,
         "context_1m": False,
     }
@@ -79,7 +81,63 @@ def test_parse_agent_config():
     # "_1m_" marks the 1M-context variant and doubles the separator before the hours.
     m1 = parse_agent_config("claude_non_api_max_claude-fable-5_1m__10h_run1")
     assert (m1["model"], m1["context_1m"], m1["config"]) == ("claude-fable-5", True, "non_api_max")
-    assert parse_agent_config("codex_non_api_max_gpt-5.6-sol_10h")["run_index"] is None
+    bare = parse_agent_config("codex_non_api_max_gpt-5.6-sol_10h")
+    assert (bare["run_index"], bare["experiment"]) == (None, "")
+
+
+def test_the_experiment_name_is_free_form_not_just_runN():
+    # Upstream's template ends in an arbitrary ${EXPERIMENT_NAME}; one of the 62
+    # published configurations uses it for something other than a repetition
+    # index, and before this was parsed it aborted the whole conversion.
+    odd = parse_agent_config("claude_claude-opus-4-6_10h_run1_old_container")
+    assert odd["experiment"] == "run1_old_container"
+    assert odd["run_index"] == 1
+    # and it stays distinguishable from the sibling it shares 27 trajectories
+    # with, which differs on nothing else a groupby would see.
+    plain = parse_agent_config("claude_claude-opus-4-6_10h_run1")
+    assert plain["experiment"] == "run1"
+    assert {k: v for k, v in odd.items() if k != "experiment"} == {
+        k: v for k, v in plain.items() if k != "experiment"
+    }
+
+
+def test_a_gpu_count_is_read_when_published_and_absent_otherwise():
+    # `_${NUM_GPUS}gpu` is emitted only above one GPU, so its absence is unknown,
+    # not one. No configuration in the current release carries it; parsing it is
+    # what keeps the next one that does from being unparsable.
+    multi = parse_agent_config("claude_non_api_max_claude-fable-5_1m__10h_8gpu_run1")
+    assert (multi["gpus"], multi["run_index"], multi["model"]) == (8, 1, "claude-fable-5")
+    assert parse_agent_config("claude_x_10h_8gpu")["experiment"] == ""
+    assert parse_agent_config(CLAUDE_CFG)["gpus"] is None
+
+
+def test_an_experiment_name_can_never_swallow_the_hours():
+    # `rest` is lazy, so widening the tail's character class is what would let
+    # the hours bind to an earlier token and silently change `hours` and `model`
+    # — both of which reach the index. Every word of the tail must be
+    # letter-initial; an hours token is not, and a word cannot contain "_".
+    # Widen the class and these three go red.
+    early = parse_agent_config("claude_x_2h_bar_10h_run1")
+    assert (early["hours"], early["model"], early["config"]) == (10.0, "bar", "x_2h")
+    dup = parse_agent_config("codex_gpt_10h_10h_run1")
+    assert (dup["hours"], dup["model"], dup["config"]) == (10.0, "10h", "gpt")
+    # A digit-initial tail is upstream emitting nothing of the sort, so it
+    # raises rather than being read as an experiment name.
+    with pytest.raises(ValueError):
+        parse_agent_config("claude_x_10h_run1_1m")
+
+
+def test_a_hyphen_in_the_experiment_name_is_not_a_second_outage():
+    # The suffix that broke the conversion was `_old_container`; `_old-container`
+    # would have been a second one, so words may hold "-" and "." internally.
+    assert parse_agent_config("claude_x_10h_run1_old-container")["experiment"] == (
+        "run1_old-container"
+    )
+
+
+def test_a_name_with_no_model_left_raises_rather_than_indexing_off_the_end():
+    with pytest.raises(ValueError):
+        parse_agent_config("a_1m_10h")
 
 
 def test_parse_run_dir_name():
@@ -96,6 +154,19 @@ def test_iter_run_dirs(ptb_samples: Path):
     assert set(runs) == {"claude", "codex"}
     assert runs["claude"].run_id == f"{CLAUDE_CFG}__{CLAUDE_RUN}"
     assert runs["codex"].benchmark == "gsm8k"
+
+
+def test_iter_run_dirs_skips_the_site_catalogue(tmp_path: Path):
+    # fetch puts viewer_data/index.json in raw/ on every batch, so that directory
+    # sits beside the configurations on any fetched mirror. It is flat today, so
+    # nothing under it is reached; if upstream ever nests it per run, the name
+    # guard is what stops "viewer_data" being parsed as an agent configuration.
+    for cfg, run in ((CLAUDE_CFG, CLAUDE_RUN), ("viewer_data", CLAUDE_RUN)):
+        d = tmp_path / cfg / run
+        d.mkdir(parents=True)
+        (d / "solve_out.txt").write_text("{}\n")
+    (tmp_path / "viewer_data" / "index.json").write_text("{}")
+    assert [r.agent_config for r in iter_run_dirs(tmp_path)] == [CLAUDE_CFG]
 
 
 def test_make_run_dir_rejects_junk(tmp_path: Path):
@@ -148,6 +219,9 @@ def test_claude_sample_converts(ptb_samples: Path):
     assert meta.flags["contamination"] is False
     assert meta.extra["n_non_json_lines"] == 10
     assert meta.extra["n_lines"] == len(list(read_line_stream(run.solve_out)))
+    # The experiment name has to reach the persisted record: it is the only
+    # field separating the two configurations that share 27 trajectories.
+    assert meta.extra["experiment"] == "run1"
     assert set(meta.source_paths) >= {"solve_out", "metrics", "time_taken", "judgement"}
 
     # One tool_use per "Tool call" line in upstream's own rendering.
@@ -160,6 +234,18 @@ def test_claude_sample_converts(ptb_samples: Path):
     assert sessions[0]["num_turns"] == 69
     assert "result_line" not in sessions[1]
     assert meta.cost_usd == pytest.approx(4.789912)
+
+
+def test_a_published_gpu_count_reaches_the_budget(ptb_samples: Path):
+    # `budget_gpus` is an index column and is NA for every run in the release,
+    # because no configuration name carries the suffix. When one does, the count
+    # has to get there — and when one does not, the key must stay absent rather
+    # than be filled in with a 1 nobody published (see test_claude_sample_converts).
+    run = make_run_dir(
+        "claude_non_api_max_claude-opus-4-8_10h_8gpu_run1", ptb_samples / CLAUDE_CFG / CLAUDE_RUN
+    )
+    _events, meta = build_run(run)
+    assert meta.budget == {"hours": 10.0, "gpus": 8}
 
 
 def test_claude_harness_origin(ptb_samples: Path):

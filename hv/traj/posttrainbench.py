@@ -23,6 +23,22 @@ Upstream quirks a future reader would otherwise rediscover the hard way:
 *   ``system_monitor.log`` (60 s samples) is recorded in ``source_paths`` and
     deliberately not parsed into events: it is machine telemetry, not agent
     behaviour.
+*   The configuration directory is built by upstream's ``run_task.sh`` as
+    ``{agent}_{agent_config}_{hours}h[_{n}gpu]{experiment_name}``. ``_runN`` is
+    not a grammar element — it is only the usual *value* of a free-form
+    ``experiment_name``, and 1 of the 62 published configurations
+    (``claude_claude-opus-4-6_10h_run1_old_container``) puts something else
+    there. ``agent_config`` is itself squashed with ``tr '/:[]' '____'``, which
+    is where the doubled separator in ``claude-fable-5_1m__10h`` comes from:
+    the upstream value is ``claude-fable-5[1m]``.
+*   One experiment is on disk twice. ``claude_claude-opus-4-6_10h_run1`` and
+    ``..._run1_old_container`` are the same 28 runs kept either side of a
+    container change — 27 share a run name and a byte-identical
+    ``solve_out.txt`` — and the copies are complementary, not nested (28 vs 19
+    ``metrics.json``, 0 vs 28 ``judgement_gpt5_4.json``). Upstream's own
+    catalogue (``viewer_data/index.json``) lists the ``_old_container`` one and
+    not the plain one. Both convert, with distinct run ids; which copy an
+    analysis keeps is not a parsing question and is not decided here.
 """
 
 from __future__ import annotations
@@ -42,10 +58,33 @@ LineRow = tuple[str | None, dict[str, Any] | None, int, str]
 
 _TS_PREFIX = re.compile(r"^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\] ")
 
+#: ``{agent}_{agent_config}_{hours}h[_{n}gpu]{experiment_name}``. ``_+`` absorbs
+#: the doubled separator left by a ``[1m]`` suffix.
+#:
+#: Every ``_``-separated word of ``experiment`` must begin with a *letter*, and
+#: that restriction is the whole safety argument for adding the group. ``rest``
+#: is lazy, so a wider tail would let the hours bind to an earlier token and
+#: silently change ``hours`` and ``model`` on names that parse today
+#: (``claude_x_2h_bar_10h_run1`` would read 2 h, not 10 h). An hours token
+#: (``10h``, ``12.5h``), a GPU token (``8gpu``) and a ``1m`` marker are all
+#: digit-initial, and a word cannot contain ``_``, so no tail can span one:
+#: the set of names this widens is disjoint from the set that parses today.
+#: Dots and hyphens are allowed *inside* a word, so ``_old-container`` parses
+#: rather than aborting a conversion the way ``_old_container`` used to.
 _AGENT_CONFIG = re.compile(
-    r"^(?P<agent>[A-Za-z0-9]+)_(?P<rest>.+?)_+(?P<hours>\d+(?:\.\d+)?)h(?:_run(?P<run>\d+))?$"
+    r"^(?P<agent>[A-Za-z0-9]+)_(?P<rest>.+?)_+(?P<hours>\d+(?:\.\d+)?)h"
+    r"(?:_(?P<gpus>\d+)gpu)?"
+    r"(?:_(?P<experiment>[A-Za-z][A-Za-z0-9.-]*(?:_[A-Za-z][A-Za-z0-9.-]*)*))?$"
 )
+#: ``experiment_name`` is free-form, but 61 of the 62 published values are a
+#: bare repetition index. Anything after it is kept on ``experiment``.
+_EXPERIMENT_RUN = re.compile(r"^run(?P<index>\d+)(?:_.+)?$")
 _RUN_DIR = re.compile(r"^(?P<benchmark>[^_]+)_(?P<model>.+)_(?P<cluster>\d+)$")
+
+#: Not an agent configuration, despite sitting beside them: upstream's
+#: pre-rendered site catalogue. ``fetch.PTB_CATALOG`` puts it in ``raw/`` on
+#: every batch, so this directory exists on any fetched mirror.
+_NOT_A_CONFIG = frozenset({"viewer_data"})
 
 _JUDGEMENT_FILES = ("judgement_gpt5_4.json", "judgement_api.json")
 
@@ -60,6 +99,8 @@ class RunDir:
     config: str
     model: str
     hours: float
+    gpus: int | None
+    experiment: str
     run_index: int | None
     context_1m: bool
     benchmark: str
@@ -79,8 +120,21 @@ class RunDir:
 def parse_agent_config(name: str) -> dict[str, Any]:
     """``claude_non_api_max_claude-opus-4-8_10h_run1`` -> its parts.
 
-    A ``_1m_`` segment marks a 1M-context variant and doubles the separator
-    before the hours (``claude-fable-5_1m__10h``), hence the ``_+``.
+    Follows upstream's own template rather than the shapes that happen to be
+    published, so a configuration directory this release does not contain still
+    parses instead of aborting a whole conversion:
+
+    *   ``experiment`` is the free-form tail after the hours (and the optional
+        GPU count), verbatim and without its leading separator. ``run_index`` is
+        read out of it when it is the usual ``runN``, and is ``None`` otherwise;
+        ``experiment`` keeps the rest, which is the only thing distinguishing
+        ``..._10h_run1_old_container`` from its ``..._10h_run1`` sibling.
+    *   ``gpus`` is ``None`` when the name carries no ``_Ngpu``. That is upstream
+        emitting the suffix only above one GPU, so absent means "not more than
+        one", not "one" — and a count nobody published stays absent.
+    *   A ``_1m_`` segment marks a 1M-context variant. It is the squashed form of
+        an ``agent_config`` ending ``[1m]``, which is also why the separator
+        before the hours is doubled (``claude-fable-5_1m__10h``), hence ``_+``.
     """
     m = _AGENT_CONFIG.match(name)
     if not m:
@@ -89,13 +143,22 @@ def parse_agent_config(name: str) -> dict[str, Any]:
     context_1m = parts[-1] == "1m"
     if context_1m:
         parts = parts[:-1]
-    run = m.group("run")
+    if not parts:
+        # `a_1m_10h`: the whole middle was the context marker, so there is no
+        # model left. A malformed name must fail the same way every other
+        # malformed name does, not as an IndexError out of the next line.
+        raise ValueError(f"agent config directory name has no model: {name!r}")
+    experiment = m.group("experiment") or ""
+    run = _EXPERIMENT_RUN.match(experiment)
+    gpus = m.group("gpus")
     return {
         "agent": m.group("agent"),
         "config": "_".join(parts[:-1]),
         "model": parts[-1],
         "hours": float(m.group("hours")),
-        "run_index": int(run) if run is not None else None,
+        "gpus": int(gpus) if gpus is not None else None,
+        "experiment": experiment,
+        "run_index": int(run.group("index")) if run is not None else None,
         "context_1m": context_1m,
     }
 
@@ -126,7 +189,11 @@ def make_run_dir(agent_config: str, path: Path) -> RunDir:
 
 def iter_run_dirs(raw_root: Path) -> Iterator[RunDir]:
     """Every ``<agent_config>/<run_dir>`` under ``raw_root`` that has a solve_out."""
-    for cfg in sorted(p for p in raw_root.iterdir() if p.is_dir() and not p.name.startswith(".")):
+    for cfg in sorted(
+        p
+        for p in raw_root.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and p.name not in _NOT_A_CONFIG
+    ):
         for rd in sorted(p for p in cfg.iterdir() if p.is_dir() and not p.name.startswith(".")):
             if (rd / "solve_out.txt").exists():
                 yield make_run_dir(cfg.name, rd)
@@ -271,6 +338,11 @@ def build_meta(run: RunDir, events: list[Event], harness: str, extra: dict[str, 
     metrics = _read_json(run.path / "metrics.json")
     flags, _ = _judgement(run)
     stamped = [e.ts for e in events if e.ts]
+    # Only what the name published: upstream omits the GPU suffix at one GPU and
+    # also whenever NUM_GPUS is unset, so an absent count is unknown, not one.
+    budget: dict[str, Any] = {"hours": run.hours}
+    if run.gpus is not None:
+        budget["gpus"] = run.gpus
 
     final_score = None
     if metrics is not None and "accuracy" in metrics:
@@ -295,6 +367,7 @@ def build_meta(run: RunDir, events: list[Event], harness: str, extra: dict[str, 
             "agent": run.agent,
             "agent_config": run.agent_config,
             "config": run.config,
+            "experiment": run.experiment,
             "run_index": run.run_index,
             "context_1m": run.context_1m,
             "hf_org": run.hf_org,
@@ -309,7 +382,7 @@ def build_meta(run: RunDir, events: list[Event], harness: str, extra: dict[str, 
         task_id=f"{run.benchmark}/{run.base_model}",
         model=run.model,
         harness=harness,
-        budget={"hours": run.hours},
+        budget=budget,
         t_start=stamped[0] if stamped else None,
         t_end=stamped[-1] if stamped else None,
         duration_s=_read_time_taken(run.path / "time_taken.txt"),

@@ -63,7 +63,9 @@ def _convert_ptb(limit: int | None) -> int:
         try:
             ptb.convert_run_dir(run, out)
         except Exception as exc:  # one malformed run must not abandon the batch
-            failed.append((run.path.name, exc))
+            # run_id, not the directory name: two agent configurations hold the
+            # same 28 run names, so the bare name identifies neither.
+            failed.append((run.run_id, exc))
     print(f"posttrainbench: {len(runs) - len(failed)}/{len(runs)} runs -> {out}")
     for name, exc in failed:
         print(f"  FAILED {name}: {type(exc).__name__}: {exc}", file=sys.stderr)
