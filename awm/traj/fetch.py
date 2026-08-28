@@ -56,10 +56,17 @@ PTB_DEFAULT_CONFIGS = (
 
 #: Sentinel for "every agent configuration in the release". Measured over the
 #: published file list: all 62 configurations, all 7 benchmarks, trace files
-#: only, is 7.30 GB / 1,842 runs — the whole analysable corpus. The other 21.6 GB
-#: of the release is workspace snapshots (10.6 GB), pre-parsed viewer JSON
-#: (5.3 GB, redundant with the traces — bar ``PTB_CATALOG``) and error logs
-#: (1.5 GB).
+#: only, is 7.30 GB / 1,842 runs. The other 21.6 GB of the release is workspace
+#: snapshots (10.6 GB), pre-parsed viewer JSON (5.3 GB, redundant with the
+#: traces — bar ``PTB_CATALOG``) and error logs (1.5 GB).
+#:
+#: 1,842 is the *run directory* count, not the corpus: 1,786 of those carry a
+#: ``solve_out.txt`` and 1,745 convert to events. The 56 with no trace are two
+#: opencode configurations holding nothing but ``metrics.json``; the other 41
+#: have a trace with no agent event in it (``NoAgentOutput``). Attrition is
+#: 20.7% for opencode against under 1% for claude-code and codex, so a
+#: per-scaffold count taken off the directory listing compares different
+#: sampling rates. Fetch by directory, report by converted run.
 ALL_CONFIGS: tuple[str, ...] = ()
 
 #: The one file under ``viewer_data/`` worth having: the catalogue that backs
@@ -73,8 +80,11 @@ ALL_CONFIGS: tuple[str, ...] = ()
 #:
 #: It is also a *partial* index: 1,509 of the release's 1,842 run directories.
 #: The 333 it omits are the unjudged ones (10% carry ``judgement_gpt5_4.json``
-#: against 98% of the catalogued), not the failed ones — most have a full trace
-#: and a score. Treat it as metadata, never as the run population.
+#: against 98% of the catalogued), not the failed ones — 277 have a full trace
+#: and a score, and the remaining 56 are the trace-less opencode runs. Treat it
+#: as metadata, never as the run population. It is safe in the other direction:
+#: every one of the 1,509 catalogued runs does have a trace on disk, so a
+#: catalogue-derived split cannot pin a run we are unable to read.
 PTB_CATALOG = "viewer_data/index.json"
 
 

@@ -82,7 +82,11 @@ Two numbers do most of the work for us:
 AIRS-Bench is 20 tasks × ≥10 seeds = ≥200 trees, and the tasks come in near-duplicate clusters
 (four QM9 targets on one dataset). Every one of those trees is thrown away. PostTrainBench ships
 **1,842 public trajectories, 62 agent configurations × 7 benchmarks** (see the README download
-table) — an outcome corpus that no current method reads.
+table) — an outcome corpus that no current method reads.[^ptb-count]
+
+[^ptb-count]: 1,842 is the run *directory* count. Measured 2026-08-28, 1,786 carry a trace and
+1,745 convert; see the 2026-08-28 changelog entry for the per-scaffold breakdown. Every number
+this document fits a model on should be the 1,745.
 
 ## 3. The model
 
@@ -291,7 +295,7 @@ Nothing below needs the model to exist.
    headroom is.
 5. **Contamination audit** of GSM8K and HumanEval against whatever data corpus we index.
 6. **Learnability probe**: fit the baseline ladder — per-task mean Δ; constant-zero; GBDT on
-   structured config features — on the 1,842 PostTrainBench trajectories. If the GBDT already
+   structured config features — on the 1,842 PostTrainBench trajectories.[^ptb-count] If the GBDT already
    matches an LLM encoder, the story is "post-training outcomes are highly predictable", which is
    still publishable but is a different paper. Establish this before building anything large.
 
@@ -323,6 +327,39 @@ exist for an ordinal judge and is the price of going cardinal.
   3.33). A scalar target cannot express that; a multi-task curve target can.
 
 ## 8. Changelog
+
+- **2026-08-28** — **The corpus is 1,745, not 1,842.** §2.3 and §6 item 6 both size the
+  PostTrainBench outcome corpus at 1,842; that is the count of run *directories* in the release,
+  and three different numbers hide under it. Measured over the fetched batch: **1,842 directories
+  → 1,786 with a `solve_out.txt` → 1,745 that convert to events.** The 56 with no trace at all
+  are two opencode configurations (`opencode_opencode_kimi-k2.5_10h_run1` and
+  `opencode_zai_glm-5_10h_run1`, 28 each, exactly 8 per benchmark) whose directories hold nothing
+  but `metrics.json` — 7 of those hold the literal string `No metrics.json produced.` The other
+  41 have a trace carrying no agent event and are skipped as `NoAgentOutput`.
+
+  Attrition is not uniform, which is why the aggregate is the wrong number to quote:
+
+  | scaffold | directories | with a trace | converted | lost |
+  |---|---|---|---|---|
+  | claude-code | 849 | 849 | 841 | 0.9% |
+  | codex | 522 | 522 | 519 | 0.6% |
+  | cursor-cli | 56 | 56 | 56 | 0.0% |
+  | **opencode** | 415 | 359 | **329** | **20.7%** |
+  | total | 1,842 | 1,786 | 1,745 | 5.3% |
+
+  Per benchmark (directories → converted): healthbench 295 → 276, bfcl 288 → 276,
+  arenahardwriting 287 → 269, aime2025 245 → 233, humaneval 243 → 231, gsm8k 243 → 230,
+  gpqamain 241 → 230.
+
+  Two consequences for the ladder in §6 item 6. First, an opencode-only slice loses a fifth of
+  its runs while a claude-code slice loses under 1%, so any per-scaffold comparison drawn on
+  directory counts is comparing different sampling rates — fit on the converted set and report
+  it. Second, `viewer_data/index.json` covers 1,509 of the 1,842, and all 1,509 do have a trace
+  on disk, so a catalogue-derived split can never pin an unreadable run; 277 traced runs sit
+  outside the catalogue and are invisible to anything that treats it as the population. The
+  release size elsewhere in this document (28.9 GB, 1,842 runs) is unchanged — it is a download
+  figure, not a corpus figure. Prose in §2.3 and §6 left intact per this document's append-only
+  rule; both now carry a footnote pointing here.
 
 - **2026-08-25** — Opened. Positioning against RPM (2608.13940) and DataMaster (2605.10906) /
   PostTrainBench (2603.08640); the cardinal cross-run predictor; the verifier tower with three

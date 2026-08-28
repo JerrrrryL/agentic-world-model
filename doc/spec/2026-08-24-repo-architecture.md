@@ -16,7 +16,7 @@
 | AIRS-Bench | 只有题目(prompt、prepare、evaluate、metadata);公开版 aira-dojo 跑不了 AIRS | **Harbor**,`awm/adapters/airs.py` 从 20 个 `metadata.yaml` 生成 task 目录 |
 | Speedrun(PI) | 题目(program.md + baseline 脚本)+ 41 条轨迹;run.sh / verify.py 可从轨迹恢复;launcher 与沙箱未开源 | **Harbor**,`tasks/speedrun_pi/track3_optimizer/` 手写(只有一题) |
 
-原生跑 PostTrainBench 的理由是可比性:与 HF 上 1,842 条公开轨迹同 prompt、同容器、同 `timer.sh`、同 `system_monitor.log`、同原生 CLI JSONL,自跑数据与公开数据可以直接合并分析。什么时候改用 Harbor:官方合并其 Harbor 适配器 PR #8 并以此出数据,或我们需要在同一批机器上混跑三家统一调度。
+原生跑 PostTrainBench 的理由是可比性:与 HF 上 1,842 个公开 run(其中 1,745 个可转成事件,见第四节)同 prompt、同容器、同 `timer.sh`、同 `system_monitor.log`、同原生 CLI JSONL,自跑数据与公开数据可以直接合并分析。什么时候改用 Harbor:官方合并其 Harbor 适配器 PR #8 并以此出数据,或我们需要在同一批机器上混跑三家统一调度。
 
 **D2 adapter 的定义**:给没有运行器的基准补运行器,借 Harbor 的 task 目录格式(task.toml + instruction.md + environment/ + tests/test.sh)来写,不重写评分逻辑——`tests/test.sh` 调用上游自己的 `evaluate.py`。只有任务成"族"时才写生成脚本(AIRS 20 题);单题手写(PI)。
 
@@ -84,11 +84,33 @@ data/
 | 源 | run 数 | 大小 | 说明 |
 |---|---|---|---|
 | PI speedrun | 41 | 50 MB | 全量。9 harness / 18 模型,172,694 主 + 118,980 子 agent 事件,附 scratchpad 决策日志 |
-| PostTrainBench(trace) | 1,842 | 7.3 GB | 62 配置 × 7 基准,可分析语料的全部 |
+| PostTrainBench(trace) | 1,842 | 7.3 GB | 62 配置 × 7 基准;1,842 是 **run 目录数**,可分析语料是 **1,745**,见下 |
 | — 默认首批 | 82 | 0.6 GB | 4 配置 × 5 个客观评分基准 |
 | — 全配置 × 5 核心基准 | 1,260 | 4.9 GB | 去掉两个 LLM 评审基准 |
 
-逐基准(仅 trace):bfcl 1.31 GB / 288 run、arenahardwriting 1.23 / 287、healthbench 1.17 / 295、gpqamain 1.01 / 241、humaneval 0.89 / 243、gsm8k 0.85 / 243、aime2025 0.84 / 245。
+> **2026-08-28 更新**:1,842 这个数底下藏着三个不同的量,拉全量后逐目录实测:
+> **1,842 个 run 目录 → 1,786 个有 `solve_out.txt` → 1,745 个能转成事件**。
+> 完全没有轨迹的 56 个全部来自两个 opencode 配置
+> (`opencode_opencode_kimi-k2.5_10h_run1`、`opencode_zai_glm-5_10h_run1`,各 28 个,
+> 每个基准正好 8 个),目录里只有 `metrics.json`,其中 7 个的内容还是
+> `No metrics.json produced.` 这句话本身而不是 JSON;剩下 41 个有轨迹但里面没有
+> 任何 agent 事件,转换器按 `NoAgentOutput` 跳过。损耗集中在一个 scaffold 上,
+> 所以引用时要说清楚引的是哪一层:
+>
+> | scaffold | 目录 | 有轨迹 | 已转换 | 损耗 |
+> |---|---|---|---|---|
+> | claude-code | 849 | 849 | 841 | 0.9% |
+> | codex | 522 | 522 | 519 | 0.6% |
+> | cursor-cli | 56 | 56 | 56 | 0.0% |
+> | **opencode** | 415 | 359 | **329** | **20.7%** |
+> | 合计 | 1,842 | 1,786 | 1,745 | 5.3% |
+>
+> 7.3 GB 是 run 目录下所有文件;只算 `solve_out.txt` 是 **4.13 GB**,其余是
+> `metrics.json`、judge 判定和计时。另:`viewer_data/index.json` 里 1,509 条
+> 全部在磁盘上有轨迹,所以从目录派生的 split 不会 pin 到读不出来的 run;
+> 目录外还有 277 个有轨迹但未进目录的 run。
+
+逐基准(trace 字节数 / 目录 → 已转换):bfcl 1.31 GB / 288 → 276、arenahardwriting 1.23 / 287 → 269、healthbench 1.17 / 295 → 276、gpqamain 1.01 / 241 → 230、humaneval 0.89 / 243 → 231、gsm8k 0.85 / 243 → 230、aime2025 0.84 / 245 → 233。
 
 PostTrainBench 全量 28.9 GB 里其余部分暂不拉:工作区快照 10.6 GB(agent 写的代码,后续分析会用)、上游预解析的 viewer JSON 5.3 GB(与 trace 重复)、error log 1.5 GB。
 
