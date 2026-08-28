@@ -32,7 +32,7 @@
 
 | 上游 | 是否 fork | 理由 |
 |---|---|---|
-| PostTrainBench | **已 fork** → `DeepCommit-ai/PostTrainBench`,分支 `hv-patches`(建于上游 `3ed1d32`,内容暂与上游逐字节相同) | 原生运行,必须在其树内改四处(裁判的 ChatGPT-Pro 登录预检、`check_cuda.py` 的 H100 字符串、AIME `endswith` 评分 bug #44、评测与 agent 镜像的 transformers 版本不一致 #65),且我们的 agent 垫片要落在它的 `agents/hv/` |
+| PostTrainBench | **已 fork** → `DeepCommit-ai/PostTrainBench`,分支 `awm-patches`(2026-08-28 由 `hv-patches` 改名;建于上游 `3ed1d32`,内容暂与上游逐字节相同) | 原生运行,必须在其树内改四处(裁判的 ChatGPT-Pro 登录预检、`check_cuda.py` 的 H100 字符串、AIME `endswith` 评分 bug #44、评测与 agent 镜像的 transformers 版本不一致 #65),且我们的 agent 垫片要落在它的 `agents/hv/` |
 | AIRS-Bench | 否 | 只读:adapter 读 `metadata.yaml` / `project_description.md` / `evaluate.py`,生成的 task 目录落在**我们**仓库;从不改其树。将来若要打评分器补丁再 fork |
 | Speedrun(PI) | 否(也不做 submodule) | 只拷两个文件;缺失的 runner 由我们自己写在 `tasks/speedrun_pi/` |
 | Harbor | 否 | pip 依赖。除非 Phase 1 验出 0.22.0 的 GPU 直通有问题需要打补丁 |
