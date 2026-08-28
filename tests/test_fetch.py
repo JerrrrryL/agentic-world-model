@@ -159,3 +159,58 @@ class TestDefaults:
     def test_default_batch_covers_both_cli_families(self):
         fams = {c.split("_")[0] for c in fetch.PTB_DEFAULT_CONFIGS}
         assert fams == {"claude", "codex"}
+
+
+RUN = "claude_non_api_max_claude-opus-4-8_10h_run1/gsm8k_Qwen_Qwen3-1.7B-Base_17315721"
+
+
+class TestSelectRuns:
+    """Selection for a committed split: exact run directories, wanted files only."""
+
+    def test_picks_the_named_runs_wanted_files_and_nothing_else(self, listing):
+        got = {p for p, _ in fetch.ptb_select_runs(listing, [RUN])}
+        assert got == {f"{RUN}/solve_out.txt", f"{RUN}/metrics.json"}
+
+    def test_a_file_the_run_never_published_is_simply_absent(self, listing):
+        # bfcl run in the fixture has solve_out.txt only; asking for metrics.json
+        # too must not invent a path that would 404 on download.
+        run = "codex_non_api_high_gpt-5.4_10h_run1/bfcl_google_gemma-3-4b-pt_16934887"
+        got = {p for p, _ in fetch.ptb_select_runs(listing, [run])}
+        assert got == {f"{run}/solve_out.txt"}
+
+
+@pytest.fixture
+def fake_hub_rev(tmp_path, listing, monkeypatch) -> list[tuple[str, str | None]]:
+    """Record ``(filename, revision)`` for pinned downloads, and write stubs."""
+    import huggingface_hub
+
+    asked: list[tuple[str, str | None]] = []
+
+    def download(repo_id, repo_type, filename, local_dir, revision=None):
+        asked.append((filename, revision))
+        out = tmp_path / filename
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("{}")
+        return str(out)
+
+    monkeypatch.setattr(fetch, "ptb_list_files", lambda *a, **kw: listing)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    return asked
+
+
+class TestFetchRuns:
+    def test_downloads_exactly_the_split_files_at_the_pinned_revision(
+        self, tmp_path, fake_hub_rev
+    ):
+        fetch.fetch_ptb_runs([RUN], revision="39d3fcd", dest=tmp_path, workers=2)
+        assert set(fake_hub_rev) == {
+            (f"{RUN}/solve_out.txt", "39d3fcd"),
+            (f"{RUN}/metrics.json", "39d3fcd"),
+            (fetch.PTB_CATALOG, "39d3fcd"),
+        }
+
+    def test_what_is_already_on_disk_is_not_re_downloaded(self, tmp_path, fake_hub_rev):
+        fetch.fetch_ptb_runs([RUN], revision="39d3fcd", dest=tmp_path, workers=2)
+        fake_hub_rev.clear()
+        fetch.fetch_ptb_runs([RUN], revision="39d3fcd", dest=tmp_path, workers=2)
+        assert fake_hub_rev == []

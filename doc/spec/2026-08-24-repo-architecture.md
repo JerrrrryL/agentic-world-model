@@ -104,6 +104,11 @@ PostTrainBench 全量 28.9 GB 里其余部分暂不拉:工作区快照 10.6 GB(a
 
 ## 六、scope 集合
 
+> **2026-08-27 更新**:本节描述的 `scope/` 机制已整体移除,由 `splits/` 取代——每个
+> YAML 是一份自包含的数据契约(pinned 上游 revision + 生成规则 + 物化清单),
+> `awm split list|check|fetch` 是新入口;AIRS 的指标锚点不再拷贝,由 adapter 直接读
+> 上游 `metadata.yaml`。以下保留作历史记录。
+
 **分工:判断留在文档,清单留在 YAML。** `scope/<bench>.yaml` 只回答"我们跑哪些任务、它们的指标和成本是什么";为什么入选、G1–G4 各自的依据、什么被剔除,全部在《案例与数据清单》里,因为那是判断,判断读起来就该是散文。
 
 第一版把判断也结构化了(`gates` 逐条 evidence、`scores` S1–S5、`verdict`、`track`、`domain_level`、`trajectories`),结果是 **3,128 行 YAML 记录 53 个任务**,其中同一段 G2 理由被抄了 32 遍(因为门槛依据多数是 benchmark 级的),`track` 53 条取值完全相同,S1 和 S5 各只填了 1 条。2026-08-25 精简到 **108 行 / 21 条**,判断回归文档。

@@ -1,3 +1,3 @@
-"""agentic-world-model: benchmark scope, unified trajectories, hierarchy analysis."""
+"""agentic-world-model: committed data splits, unified trajectories, hierarchy analysis."""
 
 __version__ = "0.1.0"

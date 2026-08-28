@@ -20,7 +20,7 @@ import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from awm.paths import ensure, raw_dir
 
@@ -177,6 +177,68 @@ def ptb_select(
         if parts[1].split("_")[0] in bench:
             picked.append((path, size))
     return picked
+
+
+def ptb_select_runs(
+    all_files: list[tuple[str, int]],
+    runs: Iterable[str],
+    files: tuple[str, ...] = PTB_RUN_FILES,
+) -> list[tuple[str, int]]:
+    """Pick the wanted files of exactly the named ``<config>/<run_name>`` dirs.
+
+    Selection is intersected with the published file list rather than built by
+    concatenation: a run that never published one of the wanted files must not
+    produce a path that 404s on download.
+    """
+    wanted_runs = set(runs)
+    want = set(files)
+    return [
+        (path, size)
+        for path, size in all_files
+        if path.rsplit("/", 1)[0] in wanted_runs and path.rsplit("/", 1)[1] in want
+    ]
+
+
+def fetch_ptb_runs(
+    runs: Iterable[str],
+    revision: str,
+    files: tuple[str, ...] = PTB_RUN_FILES,
+    dest: Path | None = None,
+    workers: int = 12,
+) -> FetchResult:
+    """Download exactly the named runs' files, pinned to one dataset revision.
+
+    This is the fetcher a committed split uses: the run list and the revision
+    both come out of its YAML, so two people running it get the same bytes. The
+    pinned catalogue rides along the way it does in every batch.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    import huggingface_hub
+
+    dest = dest or raw_dir("posttrainbench")
+    ensure(dest)
+    wanted = ptb_select_runs(ptb_list_files(), runs, files)
+    todo = [p for p, _ in wanted if not (dest / p).exists()]
+    if not (dest / PTB_CATALOG).exists():
+        todo.append(PTB_CATALOG)
+    print(f"posttrainbench@{revision[:12]}: {len(wanted)} files selected, {len(todo)} to download")
+
+    def one(path: str) -> str:
+        return huggingface_hub.hf_hub_download(
+            repo_id=PTB_DATASET,
+            repo_type="dataset",
+            filename=path,
+            local_dir=str(dest),
+            revision=revision,
+        )
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for fut in as_completed({pool.submit(one, p) for p in todo}):
+            fut.result()
+
+    n, total = _tree_size(dest)
+    return FetchResult("posttrainbench", dest, n, total)
 
 
 def fetch_posttrainbench(

@@ -20,7 +20,7 @@
 | B 自跑 | NanoGPT Speedrun(PI 设定)校准自跑、AIRS 8(GPU-heavy)、AutoLab 8、NatureBench 抽样、PaperBench 10 篇、自建 figure 复现 | ~30 + Speedrun 1 题 × seed | harness 开源,自产 |
 | C 负对照 | MLS-Bench llm-pretrain 族 | 11 | 自产 |
 
-**PoC 自跑聚焦 10 题**(2026-08-25 核定):Speedrun 1 + AIRS GPU-heavy 8 + PostTrainBench 1 配置(GSM8K × Qwen3-4B,暂定可换)。机器可读清单在 `scope/*.yaml`(`awm scope check` 与本文档对账);逐题 GPU 需求见 `doc/reference/harness_facts/gpu_requirements.md`。AutoLab、NatureBench、PaperBench 等仍在筛选账面,但不在首批自跑。
+**PoC 自跑聚焦 10 题**(2026-08-25 核定):Speedrun 1 + AIRS GPU-heavy 8 + PostTrainBench 1 配置(GSM8K × Qwen3-4B,暂定可换)。机器可读清单在 `splits/`(2026-08-27 起取代 `scope/`:AIRS 选题在 `splits/airs/gpu-heavy-8-v1.yaml`,PostTrainBench 轨迹划分在 `splits/posttrainbench/`,`awm split check` 对 pinned catalogue 回放校验);逐题 GPU 需求见 `doc/reference/harness_facts/gpu_requirements.md`。AutoLab、NatureBench、PaperBench 等仍在筛选账面,但不在首批自跑。
 
 ## 三、各 benchmark 详情
 

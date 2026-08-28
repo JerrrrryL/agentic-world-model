@@ -1,7 +1,7 @@
 [project]
 name = "agentic-world-model"
 version = "0.1.0"
-description = "Hierarchical verifier synthesis for autonomous model development: benchmark scope, unified trajectories, analysis"
+description = "Hierarchical verifier synthesis for autonomous model development: committed data splits, unified trajectories, analysis"
 requires-python = ">=3.10"
 dependencies = [
     "pyyaml>=6.0",
