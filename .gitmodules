@@ -1,12 +1,12 @@
 [submodule "third_party/PostTrainBench"]
 	path = third_party/PostTrainBench
 	url = https://github.com/DeepCommit-ai/PostTrainBench.git
-	branch = hv-patches
+	branch = awm-patches
 [submodule "third_party/airs-bench"]
 	path = third_party/airs-bench
 	url = https://github.com/DeepCommit-ai/airs-bench.git
-	branch = hv-patches
+	branch = awm-patches
 [submodule "third_party/frontier-automated-speedrun"]
 	path = third_party/frontier-automated-speedrun
 	url = https://github.com/DeepCommit-ai/frontier-automated-speedrun.git
-	branch = hv-patches
+	branch = awm-patches
