@@ -232,19 +232,19 @@ class TestCheck:
         assert any("sha256" in p for p in problems)
 
 
-GSM8K_SPLIT = "posttrainbench/gsm8k-base-holdout-v1"
+GSM8K_SPLIT = "posttrainbench/gsm8k-gemma-holdout-v1"
 
 
 class TestCommittedGsm8kSplit:
     """What the contract currently says, so an accidental edit is loud."""
 
-    def test_holds_out_qwen3_4b_with_146_train_47_test(self):
+    def test_holds_out_gemma_with_143_train_50_test(self):
         s = splits.load(GSM8K_SPLIT)
         assert s.benchmark == "gsm8k"
-        assert s.rule["test"] == ["Qwen_Qwen3-4B-Base"]
-        assert s.counts == {"train": 146, "test": 47}
-        assert all("Qwen_Qwen3-4B-Base" in run for run in s.test)
-        assert not any("Qwen_Qwen3-4B-Base" in run for run in s.train)
+        assert s.rule["test"] == ["google_gemma-3-4b-pt"]
+        assert s.counts == {"train": 143, "test": 50}
+        assert all("google_gemma-3-4b-pt" in run for run in s.test)
+        assert not any("google_gemma-3-4b-pt" in run for run in s.train)
 
     def test_is_pinned_to_one_dataset_revision_and_catalogue(self):
         s = splits.load(GSM8K_SPLIT)

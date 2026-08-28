@@ -113,8 +113,8 @@ awm traj convert --source all
 awm traj index
 
 awm split list
-awm split check posttrainbench/gsm8k-base-holdout-v1
-awm split fetch posttrainbench/gsm8k-base-holdout-v1   # exactly the split's runs, pinned revision
+awm split check posttrainbench/gsm8k-gemma-holdout-v1
+awm split fetch posttrainbench/gsm8k-gemma-holdout-v1   # exactly the split's runs, pinned revision
 python -m pytest tests/ -q
 ```
 

@@ -242,7 +242,7 @@ def build_parser() -> argparse.ArgumentParser:
     sk = sp.add_parser(
         "check", help="replay a split's rule over the pinned catalogue and compare"
     )
-    sk.add_argument("id", help="e.g. posttrainbench/gsm8k-base-holdout-v1")
+    sk.add_argument("id", help="e.g. posttrainbench/gsm8k-gemma-holdout-v1")
     sk.set_defaults(func=_split_check)
 
     sf = sp.add_parser("fetch", help="download exactly a split's runs at its pinned revision")
