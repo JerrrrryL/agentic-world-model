@@ -1,0 +1,25 @@
+# AIRS-Bench tasks in play: the eight most GPU-hungry ones (selected 2026-08-25).
+#
+# This file records only the human choice — which tasks, on what box, for how
+# long. Everything upstream already states (metric name and direction, SOTA
+# reference, s_min/s_opt anchors, category) is read from the airs-bench
+# submodule's per-task metadata.yaml by awm/adapters/airs.py, never copied here:
+# a copy needs a drift check, a read does not.
+#
+# Why these eight and what was dropped or kept as backup lives in
+# doc/meeting/aug_24_data_select.md section 3.4, with per-task GPU needs in
+# doc/reference/harness_facts/gpu_requirements.md.
+kind: task-selection
+name: gpu-heavy-8-v1
+benchmark: airs
+resources: {gpus: 1, gpu_type: H200, cpus: 24, mem_gb: 200}
+budget: {official_h: 24, poc_h: 24}
+tasks:
+  - CvMolecularPropertyPredictionQm9MeanAbsoluteError
+  - GMolecularPropertyPredictionQm9MeanAbsoluteError
+  - R2AbsMolecularPropertyPredictionQm9MeanAbsoluteError
+  - U0MolecularPropertyPredictionQm9MeanAbsoluteError
+  - GraphRegressionZincMae
+  - SentimentAnalysisYelpReviewFullAccuracy
+  - QuestionAnsweringDuoRCAccuracy
+  - ReadingComprehensionSquadExactMatch

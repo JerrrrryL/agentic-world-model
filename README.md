@@ -37,7 +37,7 @@ appears; `LICENSE` §5.9 already covers both repository names. The former packag
 | `doc/meeting/aug_24_data_select.md` | Which benchmarks and tasks passed those rules, the trajectory assets, GPU budgets |
 | `doc/reference/harness_facts/` | Verbatim research on each upstream harness: task format, runner, agent interface, trajectory format |
 | `doc/spec/2026-08-24-repo-architecture.md` | This repo's design: hybrid runtime, event schema, phases |
-| `scope/` | Machine-readable task registry — every task's verdict, gate evidence, metric anchors |
+| `splits/` | Committed data contracts: run-level train/test splits and task selections, pinned to upstream revisions |
 | `tasks/` | Harbor task directories for the benchmarks that ship no runner |
 | `awm/` | The Python package: our methods live here |
 | `third_party/` | Upstream repos as pinned submodules; never vendored |
@@ -112,7 +112,9 @@ awm traj fetch posttrainbench --all   # everything, 7.3 GB / 1,842 runs
 awm traj convert --source all
 awm traj index
 
-awm scope list --verdict selected --bench airs
+awm split list
+awm split check posttrainbench/gsm8k-gemma-holdout-v1
+awm split fetch posttrainbench/gsm8k-gemma-holdout-v1   # exactly the split's runs, pinned revision
 python -m pytest tests/ -q
 ```
 

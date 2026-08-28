@@ -47,8 +47,12 @@ from typing import Any, Iterable
 
 import yaml
 
-from awm import scope
+from awm import splits
 from awm.paths import REPO_ROOT, data_root, ensure, tasks_dir
+
+#: The committed task selection this adapter generates for. Tasks outside it
+#: still generate (for smoke tests and backups), just with no resource claim.
+AIRS_SELECTION = "airs/gpu-heavy-8-v1"
 
 UPSTREAM_ROOT = REPO_ROOT / "third_party" / "airs-bench"
 UPSTREAM_TASKS = UPSTREAM_ROOT / "airsbench" / "tasks" / "rad"
@@ -612,11 +616,24 @@ print("wrote /app/submission.csv", pred.shape, np.bincount(pred))
 '''
 
 
-def _task_toml(task: str, prof: Profile, entry: scope.Entry | None) -> str:
+def _selection_facts(task: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``(resources, budget)`` the committed selection claims for ``task``.
+
+    Empty for a task outside the selection: a backup or smoke task carries no
+    resource promise, and writing one anyway is how it would go stale.
+    """
+    sel = splits.load_selection(AIRS_SELECTION)
+    if task not in sel.tasks:
+        return {}, {}
+    return sel.resources, sel.budget
+
+
+def _task_toml(task: str, prof: Profile) -> str:
     meta = read_metadata(task)
     li = meta["logging_info"]
     a = anchors(task)
     sota = li["sota"][0]
+    resources, budget = _selection_facts(task)
 
     def q(v: Any) -> str:
         return json.dumps(v)
@@ -644,8 +661,8 @@ def _task_toml(task: str, prof: Profile, entry: scope.Entry | None) -> str:
         f"train_split = {q(str(li['train_split']))}",
         f"test_split = {q(str(li['test_split']))}",
         f"test_shape = {q(str(li['shape']))}",
-        f"scope_gpu_type = {q(str((entry.resources if entry else {}).get('gpu_type', '')))}",
-        f"official_budget_h = {(entry.budget.get('official_h') if entry else 0) or 0}",
+        f"selection_gpu_type = {q(str(resources.get('gpu_type', '')))}",
+        f"official_budget_h = {budget.get('official_h') or 0}",
         "tags = [\"airs-bench\", \"track-optimize\", "
         f"{q(li['category'])}, {q(li['metric'])}]",
         "",
@@ -686,16 +703,10 @@ def generate(task: str, profile: str = "smoke", out_dir: Path | None = None) -> 
     src = upstream_dir(task)
     dest = Path(out_dir) if out_dir else out_root() / task
 
-    entry = None
-    try:
-        entry = scope.get(f"airs/{task}")
-    except KeyError:
-        pass
-
     for sub in ("environment", "tests/upstream", "solution"):
         ensure(dest / sub)
 
-    (dest / "task.toml").write_text(_task_toml(task, prof, entry), encoding="utf-8")
+    (dest / "task.toml").write_text(_task_toml(task, prof), encoding="utf-8")
     (dest / "instruction.md").write_text(_instruction(task, prof), encoding="utf-8")
     (dest / "environment" / "Dockerfile").write_text(
         _dockerfile(task, meta, prof), encoding="utf-8"
@@ -811,7 +822,7 @@ def raw_present(task: str, raw_dir: Path | None = None) -> bool:
 
 
 def selected_tasks() -> list[str]:
-    return [e.task for e in scope.load("airs")]
+    return list(splits.load_selection(AIRS_SELECTION).tasks)
 
 
 def _cmd_generate(args: argparse.Namespace) -> int:
@@ -834,16 +845,16 @@ def _cmd_stage(args: argparse.Namespace) -> int:
 
 def _cmd_plan(args: argparse.Namespace) -> int:
     rows = []
-    for e in scope.load("airs"):
-        hf_id, config = dataset_of(e.task)
-        a = anchors(e.task)
+    for task in selected_tasks():
+        hf_id, config = dataset_of(task)
+        a = anchors(task)
         rows.append({
-            "task": e.task,
+            "task": task,
             "dataset": f"{hf_id}:{config}",
-            "raw_present": raw_present(e.task),
+            "raw_present": raw_present(task),
             "raw_bytes": _du(raw_root() / hf_id / str(config))
-            if raw_present(e.task) else 0,
-            "reference_solution": e.task in REFERENCE_SOLUTIONS,
+            if raw_present(task) else 0,
+            "reference_solution": task in REFERENCE_SOLUTIONS,
             "metric": a.metric,
             "direction": a.direction,
         })

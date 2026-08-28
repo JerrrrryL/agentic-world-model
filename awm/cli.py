@@ -134,33 +134,52 @@ def _index(args: argparse.Namespace) -> int:
     return 0
 
 
-def _scope_list(args: argparse.Namespace) -> int:
-    from awm import scope
+def _split_list(args: argparse.Namespace) -> int:
+    from awm import splits
 
-    entries = scope.load(args.bench)
-    if args.self_run:
-        entries = [e for e in entries if e.self_run]
-    if args.ids_only:
-        print("\n".join(e.id for e in entries))
-        return 0
-    width = max((len(e.id) for e in entries), default=0)
-    for e in entries:
-        runs = f"x{e.n_runs}" if e.n_runs > 1 else "  "
-        note = "" if e.self_run else "  (analysis only)"
-        print(f"{e.id:<{width}} {runs}  {e.metric.get('name', '')}{note}")
-    total = sum(e.n_runs for e in entries)
-    print(f"\n{len(entries)} tasks, {total} runs")
+    for sid in splits.list_ids():
+        try:
+            s = splits.load(sid)
+            print(f"{sid}  [{s.benchmark}]  train={s.counts['train']} test={s.counts['test']}")
+        except splits.SplitError:
+            sel = splits.load_selection(sid)
+            print(f"{sid}  [{sel.benchmark}]  tasks={len(sel.tasks)}")
     return 0
 
 
-def _scope_check(args: argparse.Namespace) -> int:
-    from awm import scope
+def _split_catalog(args: argparse.Namespace):
+    from awm.traj import fetch
 
-    issues = scope.check()
+    path = paths.raw_dir("posttrainbench") / fetch.PTB_CATALOG
+    if not path.exists():
+        print(f"catalogue not fetched at {path} — run `awm split fetch {args.id}` "
+              "or `awm traj fetch posttrainbench`", file=sys.stderr)
+        return None
+    return fetch.ptb_catalog(), path.read_bytes()
+
+
+def _split_check(args: argparse.Namespace) -> int:
+    from awm import splits
+
+    s = splits.load(args.id)
+    got = _split_catalog(args)
+    if got is None:
+        return 1
+    issues = splits.check(s, got[0], catalog_bytes=got[1])
     for issue in issues:
         print(f"  - {issue}")
     print(f"{len(issues)} issue(s)")
     return 1 if issues else 0
+
+
+def _split_fetch(args: argparse.Namespace) -> int:
+    from awm import splits
+    from awm.traj import fetch
+
+    s = splits.load(args.id)
+    result = fetch.fetch_ptb_runs(s.train + s.test, revision=s.dataset["revision"])
+    print("  " + str(result))
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -214,19 +233,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.set_defaults(func=_run)
 
-    sc = sub.add_parser("scope", help="query the task registry").add_subparsers(
+    sp = sub.add_parser("split", help="query the committed data splits").add_subparsers(
         dest="cmd", required=True
     )
-    sl = sc.add_parser("list", help="list tasks in scope")
-    sl.add_argument("--bench", choices=["posttrainbench", "airs", "speedrun_pi"])
-    sl.add_argument(
-        "--self-run", action="store_true", help="only tasks we run ourselves, not analysis-only"
-    )
-    sl.add_argument("--ids-only", action="store_true")
-    sl.set_defaults(func=_scope_list)
+    sl = sp.add_parser("list", help="list the committed splits and selections")
+    sl.set_defaults(func=_split_list)
 
-    sk = sc.add_parser("check", help="reconcile the registry against upstream and the docs")
-    sk.set_defaults(func=_scope_check)
+    sk = sp.add_parser(
+        "check", help="replay a split's rule over the pinned catalogue and compare"
+    )
+    sk.add_argument("id", help="e.g. posttrainbench/gsm8k-gemma-holdout-v1")
+    sk.set_defaults(func=_split_check)
+
+    sf = sp.add_parser("fetch", help="download exactly a split's runs at its pinned revision")
+    sf.add_argument("id")
+    sf.set_defaults(func=_split_fetch)
     return p
 
 

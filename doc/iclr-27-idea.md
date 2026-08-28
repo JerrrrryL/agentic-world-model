@@ -2,7 +2,7 @@
 
 **Status**: living document — append, do not rewrite history. **Opened** 2026-08-25.
 **Companions**: `doc/spec/2026-08-24-repo-architecture.md` (how we run things),
-`doc/reference/harness_facts/` (what upstream actually ships), `scope/*.yaml` (which tasks count).
+`doc/reference/harness_facts/` (what upstream actually ships), `splits/` (which tasks and runs count; replaced `scope/*.yaml` on 2026-08-27).
 
 Facts carry **VERIFIED** (checked against a paper, the repo, or a computation recorded here)
 or **UNVERIFIED** (my claim, with the check that would settle it). Never promote a tag

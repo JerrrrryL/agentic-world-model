@@ -63,8 +63,8 @@ def index_path() -> Path:
     return data_root() / "traj" / "index.parquet"
 
 
-def scope_dir() -> Path:
-    return REPO_ROOT / "scope"
+def splits_dir() -> Path:
+    return REPO_ROOT / "splits"
 
 
 def tasks_dir() -> Path:

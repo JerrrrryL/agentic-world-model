@@ -20,8 +20,8 @@ dataset_config = "default"
 train_split = "train"
 test_split = "test"
 test_shape = "(4906,)"
-scope_gpu_type = "H200"
-official_budget_h = 24
+selection_gpu_type = ""
+official_budget_h = 0
 tags = ["airs-bench", "track-optimize", "Text Classification", "Accuracy"]
 
 # Read by tests/score.py from tests/anchors.json, which is generated in the
