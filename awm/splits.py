@@ -167,8 +167,12 @@ def apply_rule(benchmark: str, rule: dict[str, Any], catalog: dict[str, Any]) ->
     """Replay ``rule`` over a catalogue, returning sorted run paths per part.
 
     A run path is ``<experiment>/<run_name>`` — the run's directory in the
-    upstream release, so membership doubles as a download address.
+    upstream release, so membership doubles as a download address. ``rule.note``
+    is prose for the reader and never affects membership.
     """
+    unknown = set(rule) - {"by", "test", "require", "note"}
+    if unknown:
+        raise SplitError(f"rule has unknown key(s) {sorted(unknown)}")
     if rule.get("by") != "trained_model":
         raise SplitError(f"rule.by is {rule.get('by')!r}; only 'trained_model' is supported")
     unknown = set(rule.get("require", {})) - set(_REQUIRE)

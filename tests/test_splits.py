@@ -84,6 +84,15 @@ class TestApplyRule:
             splits.apply_rule("gsm8k", {**RULE, "require": {"acc": "present"}}, {"runs": []})
         with pytest.raises(splits.SplitError, match="by"):
             splits.apply_rule("gsm8k", {**RULE, "by": "agent_model"}, {"runs": []})
+        with pytest.raises(splits.SplitError, match="rule"):
+            splits.apply_rule("gsm8k", {**RULE, "tset": ["x"]}, {"runs": []})
+
+    def test_a_prose_note_rides_along_without_affecting_membership(self):
+        catalog = {"runs": [_row("expA", "google_gemma-3-4b-pt")]}
+        noted = {**RULE, "note": "everything but the heldout model is train"}
+        assert splits.apply_rule("gsm8k", noted, catalog) == splits.apply_rule(
+            "gsm8k", RULE, catalog
+        )
 
 
 SPLIT_BODY = """\

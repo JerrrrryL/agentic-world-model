@@ -24,18 +24,16 @@ dataset:
   catalog_sha256: 35d54c47ecdbb9cb38b07e80f3e91f0ea3712998ef9f120894ce88b7be90bb12
 benchmark: gsm8k
 rule:
-  # Which catalogue field decides a run's side. trained_model is the base
-  # model the agent was post-training in that run (one per run) — not the
-  # agent's own model.
-  by: trained_model
-  # The held-out value(s): a run training any model listed here is test.
-  # Everything else is train — the complement, never enumerated, so a base
-  # model upstream adds later lands in train and test stays frozen.
-  test: [google_gemma-3-4b-pt]  # HF id google/gemma-3-4b-pt; catalogue spelling
-  # Admission gates, applied before taking sides; a run failing any of them
-  # is in neither list. accuracy present = the run was actually scored;
-  # the two flags are the official GPT-5.4 judge verdicts for test-set
-  # contamination and for using a disallowed model.
+  note: >-
+    Hold out one base model entirely: every scored GSM8K run whose agent
+    post-trains gemma-3-4b is test; runs post-training any other base model
+    (Qwen3-4B, Qwen3-1.7B, SmolLM3-3B) are train. Train is the complement,
+    never enumerated, so a base model upstream adds later lands in train and
+    test stays frozen. The require gates drop unscored runs and the ones the
+    official GPT-5.4 judge flagged (test-set contamination, disallowed model)
+    before sides are taken.
+  by: trained_model  # the base model the agent post-trains, not the agent's own
+  test: [google_gemma-3-4b-pt]  # catalogue spelling of HF id google/gemma-3-4b-pt
   require: {accuracy: present, contamination_flagged: false, disallowed_flagged: false}
 counts: {train: 143, test: 50}
 splits:
