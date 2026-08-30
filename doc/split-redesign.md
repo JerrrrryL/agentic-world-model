@@ -599,6 +599,109 @@ honest next step is the reverse direction: rank a whole choice set rather than
 compare two, and the crossed rollout in §"The confound no split can fix" to break
 the agent/recipe confound at the source.
 
+## The reverse direction: ranking a whole choice set
+
+The pairwise arm is a discriminator shown both sides. The thesis needs a
+predictor: hand it a cell's worth of candidates and take the three it likes best.
+The metric is `regret@3 = best_in_the_set − best_of_the_three_you_picked`, and
+zero means the winner was in your three.
+
+Two stages, which is what a deployment would actually do — an `O(n)` scorer to
+narrow and an `O(k²)` comparator to decide:
+
+| stage | what it sees | calls | cost |
+|---|---|---:|---:|
+| A | one redacted digest, alone, rate it 0–100 | 1,175 | $124.90 |
+| B | round-robin the top 6 of each cell, both orders, Copeland | 840 | $216.12 |
+
+Stage A is the harder half and the new thing: scoring in isolation means
+supplying your own standard, where a pair only needs a relative difference. It
+works as a *ranker* and not as an estimator — within-cell Spearman against true
+accuracy has median **+0.818** across the 28 cells (range +0.061 to +0.946),
+while its point estimate of the benchmark score is off by **0.062** on average.
+
+### On a whole cell, the lookup table is still not beaten
+
+Median cell: 44 candidates, spread 0.655.
+
+| arm | regret@3 | 95 % CI | cells solved | regret@1 |
+|---|---:|---|---:|---:|
+| random three | 0.1307 | [0.0903, 0.1756] | 0.0 % | 0.2640 |
+| self-report (largest printed number) | 0.1019 | [0.0516, 0.1629] | 21.4 % | 0.1663 |
+| agent-family lookup table | 0.0248 | [0.0097, 0.0447] | 50.0 % | 0.0490 |
+| 21 bucketed features, fitted | 0.0242 | [0.0134, 0.0359] | 50.0 % | 0.0678 |
+| stage A | 0.0209 | [0.0120, 0.0305] | 42.9 % | 0.0574 |
+| **stage A + B** | **0.0137** | [0.0061, 0.0227] | **60.7 %** | **0.0225** |
+
+Paired over the 28 cells, the only clean win in this table is stage B over stage
+A alone: **−0.0072, 8–0, p = 0.008**. Every cell where the Copeland re-rank
+changed the top three, it improved it, and it never made one worse. Against the
+lookup table the pipeline is ahead by 0.0110 and that is **8–3, p = 0.227** —
+*not* a win. Twelve of the 28 cells are solved by every arm including the table,
+so the mean is decided by a handful of cells, and 28 is the sample size.
+
+This is the same table as in §"A tuned metadata model loses to a parameter-free
+lookup", the one that reached regret 0.0000 on the shipped `gsm8k-gemma` split.
+Over all 28 cells it is not perfect — 0.0248 — but it is still the thing to beat,
+and on full cells nothing here beats it.
+
+### Where the table has no information, the picture inverts
+
+Restrict each set to one agent family, which is what the 5-fold split holds out.
+76 sets, median size 5, median spread 0.129:
+
+| arm | regret@3 | 95 % CI | sets solved | vs random |
+|---|---:|---|---:|---|
+| agent-family lookup table | 0.0546 | [0.0257, 0.0935] | 53.9 % | 40–31, p = 0.34 |
+| random three | 0.0271 | [0.0179, 0.0404] | 6.6 % | — |
+| 21 bucketed features, fitted | 0.0197 | [0.0115, 0.0291] | 71.1 % | 49–22, p = 0.002 |
+| self-report | 0.0092 | [0.0040, 0.0155] | 78.9 % | 59–12, p = 1e-8 |
+| **stage A** | **0.0047** | [0.0016, 0.0085] | **88.2 %** | **62–9, p = 7e-11** |
+
+The table's 0.0546 is not a baseline and should not be read as one: inside a
+single family its score is constant, so it degenerates to an arbitrary fixed
+order — which is why it lands *worse* than random. The real reading is stage A at
+0.0047 against random's 0.0271, 62–9. Stage A over self-report is −0.0045,
+**14–8, p = 0.29**: not significant, because with five candidates and three picks
+there is almost nothing left to win.
+
+**Stage A + B is not measured on this population.** Stage B only compared each
+*cell's* top six, and those six almost never fall inside one family — pair
+coverage of the within-family shortlists is **1.0 %**, against 100 % on full
+cells. The identical numbers in the two rows are an absence of data, not a tie.
+
+### The leak control
+
+Stage A reads the redacted digest, so the question is what is left in that text.
+Answering it by conditioning on "no run printed a score" is useless — exactly
+**1 of 76** within-family sets qualifies. The usable control is to run the score
+regex on the identical string stage A was handed:
+
+| arm | full cell | within family |
+|---|---:|---:|
+| self-report, raw text | 0.1019 | 0.0092 |
+| self-report, on the redacted text | 0.0627 | **0.0519** |
+| stage A, on the redacted text | 0.0209 | **0.0047** |
+| random | 0.1307 | 0.0271 |
+
+Redaction takes quotable scores from 1,003 of 1,175 runs down to 289. On that
+text the regex is worse than random within a family (0.0519 vs 0.0271) while
+stage A, reading the same characters, is at 0.0047. Whatever stage A is doing, it
+is not transcribing a printed score.
+
+### What this settles and what it does not
+
+A model reading trajectories picks a cell's winner into its top three **60.7 %**
+of the time and, within an agent family, **88.2 %** of the time — and the
+within-family result is the one the agent confound cannot explain. What it does
+not show is a win over the lookup table on full cells; at 28 cells that
+comparison has no power, and the honest summary is that the pipeline matches the
+table where the table works and replaces it where it does not. Neither number
+touches the underlying confound — every recipe in this corpus was written *and*
+executed by the same agent, so "the recipe predicts the score" and "the agent
+predicts both" remain observationally identical here. Only the crossed rollout in
+§"The confound no split can fix" separates them.
+
 ## Reproducing
 
 ```bash
@@ -619,6 +722,10 @@ python3 tools/extract_agree.py                      # cheap tier vs the 143 heav
 python3 tools/traj_read.py --arms selfreport,features,effort   # free
 python3 tools/traj_read.py --arms summary,recipe,redact,raw    # ~$470, resumable
 python3 tools/traj_read_report.py                              # every cut in the section above
+
+python3 tools/choice_rank.py --stage a           # 1175 calls, ~$125, resumable
+python3 tools/choice_rank.py --stage b --topk 6  #  840 calls, ~$216, resumable
+python3 tools/choice_rank_report.py              # the regret tables, free
 ```
 
 `run.py` evaluates the shipped split first as a positive control and exits
