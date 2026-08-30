@@ -106,6 +106,35 @@ def anchor_rows(records: list[dict]) -> tuple[list[list[str]], int]:
               ANCHOR_MEANING.get(k, "")] for k in order], total)
 
 
+#: The row fields that hold a list of claims. Only the first two carry anchors;
+#: the rest are prose the extractor wrote and no checker can re-verify.
+ANCHORED_FIELDS = ("algorithms", "datasets")
+UNANCHORED_FIELDS = ("inference_tricks", "discarded", "unresolved")
+
+
+def _coverage_line(records: list[dict]) -> str:
+    """How much of a row the anchor table actually covers.
+
+    Written because "anchored quote by quote" reads as a property of the row and
+    is a property of two of its fields. The denominator is every list entry a
+    reader would call a claim, so the share is deliberately unflattering; the
+    alternative is a number that divides the anchors by themselves.
+    """
+    anchored = sum(len(r[f] or []) for r in records for f in ANCHORED_FIELDS)
+    loose = sum(len(r.get(f) or []) for r in records for f in UNANCHORED_FIELDS)
+    total = anchored + loose
+    return (
+        f"**Coverage: {anchored:,} of {total:,} ({_pct(anchored, total)}) list entries in the"
+        f" file carry an anchor at all.** The other {loose:,} are `"
+        + "`, `".join(UNANCHORED_FIELDS)
+        + "` entries. `hyperparams` is a third case and the easiest to misread: it carries an"
+        " `evidence_i` on almost every row but never an `evidence_quote`, so it names a block"
+        " without quoting it, and there is nothing for the matcher to fail. Those fields are the"
+        " extractor's prose, checked by a reader and not by a matcher, and a green anchor table"
+        " says nothing whatever about them."
+    )
+
+
 def by_format_rows(records: list[dict]) -> list[list[str]]:
     """Extraction quality per wire format — four scaffolds, four ways to be unparseable."""
     fmts = sorted({r["trace_format"] for r in records})
@@ -280,7 +309,24 @@ def _why_flagged(record: dict) -> str:
     ranked = {"fatal": 0, "major": 1, "minor": 2}
     worst = min(record["extraction"]["problems"],
                 key=lambda p: ranked.get(p.get("severity"), 3))
-    return f'**{worst.get("severity")}** — {worst["issue"][:200]}'
+    return f'**{worst.get("severity")}** — {_clip(worst["issue"], 200)}'
+
+
+def _clip(text: str, limit: int) -> str:
+    """Cut to ``limit`` without lying about it and without breaking the markdown.
+
+    A hard slice ends mid-word, which reads as a typo rather than a cut, and it
+    can land inside a span of backticks — leaving an odd number of them, so the
+    rest of the line renders as code and the reader blames the data. Cut at a
+    space instead, mark it, and drop a dangling opener.
+    """
+    if len(text) <= limit:
+        return text
+    head = text[:limit]
+    head = head[:head.rfind(" ")] if " " in head else head
+    if head.count("`") % 2:
+        head = head[:head.rfind("`")].rstrip()
+    return head + " …"
 
 
 def _flagged_split(flagged: list[dict]) -> str:
@@ -348,7 +394,9 @@ def render(records: list[dict], spec: dict, jsonl_name: str) -> str:
 
 One line per **train** run of `{spec['name']}`: the post-training recipe the agent
 actually shipped — which data, in what mixture, trained with which algorithm at which
-hyper-parameters — read out of that run's own trajectory and anchored to it quote by quote.
+hyper-parameters — read out of that run's own trajectory. The algorithms and the data
+mixture are anchored to it quote by quote; the rest of the row is not, and the share is
+measured below.
 
 The split itself is `{spec['name']}.yaml`; this file adds nothing to its membership and
 changes nothing about it. It is a *reading* of the {n} train runs, and it is only as good as
@@ -367,9 +415,12 @@ the audit reported below — which is why the audit is here and not in a commit 
 | benchmark | `{spec['benchmark']}` |
 | population | the {n} runs in `splits.train`, unchanged |
 
-Both pins are the split's, copied here so this file can be checked on its own. Nothing was
-read from anywhere else: the only admissible evidence for a claim in a row is that run's own
-event stream at that revision.
+Both pins are the split's, copied here so this file can be checked on its own. The rule every
+model in the chain was given: the only admissible evidence for a claim in a row is that run's
+own event stream at that revision. That is the instruction, not a proven property of the
+output — one row's `unresolved` ends "The harness records 0.818", and 0.818 is the
+catalogue's accuracy for that row and appears nowhere in its digest. Treat the rule as what
+was asked for, and the anchors below as what can be checked.
 
 ## One row
 
@@ -382,14 +433,24 @@ The recipe, extracted — `pipeline` (the normalised stage order, e.g. `sft→rf
 not settle), `confidence`.
 
 The outcome, joined on afterwards — `accuracy`, `stderr`, `total_cost_usd`, `num_turns`,
-`duration_ms`. **Afterwards** is load-bearing: the digest the extractor read carries no score
-at all, so it could not describe a recipe as good because it knew the number was good.
+`duration_ms`. **Afterwards** means the join, and nothing stronger. No extracted field was
+conditioned on the catalogue's number, because the catalogue was not read until every row was
+written. It does **not** mean the extractor worked blind: agents evaluate their own models
+inside the run and say so, the filter deliberately keeps the tail of a result that follows a
+training command, and so most digests do state a score. On a small number of rows one of those
+stated scores rounds to the same value the catalogue later joined on. If you need a recipe that
+could not have been written by a model that knew roughly how the run turned out, this file does
+not give you one — and because the digests are not shipped, that is not something you can
+re-check from the release.
 
 The audit, per row — `extraction.{{status, problems, evidence_anchors, repair_round, ...}}`.
 
 Every `algorithms[]` and `datasets[]` entry carries `evidence_i` (an event index in the full
 stream) and `evidence_quote` (text from that event). That pair is what makes a row checkable
-rather than merely plausible.
+rather than merely plausible — and it is the *only* field pair that carries one.
+`hyperparams`, `inference_tricks[]`, `discarded[]` and `unresolved[]` have no anchor, so
+"anchored quote by quote" is true of the algorithms and the data mixture and of nothing else
+in the row. The share is in the table below.
 
 ## How it was built
 
@@ -439,6 +500,15 @@ look-alike characters folded to ASCII, no fuzzy matching, no edit distance:
 `tests/test_evidence.py` pins the checker against paraphrase, out-of-order elision and
 cross-block quotes, because a lenient checker would turn this table into a restatement of the
 extractor's own confidence.
+
+{_coverage_line(records)}
+
+**This table is partly fitted, and the fit is the point.** A `wrong-block` or `absent` verdict
+was a major fault, a major fault bought a repair, and the repair was told to fix the quote. So
+a clean column here does not say the extractor got its quotes right first time; it says the
+quotes that survived the loop are verbatim. What the loop could not do is invent an anchor
+where the digest had none — that path ends in a deleted entry or a `flagged` row, both visible
+above.
 
 ### By wire format
 

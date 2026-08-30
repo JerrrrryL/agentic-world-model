@@ -2,7 +2,9 @@
 
 One line per **train** run of `gsm8k-gemma-holdout-v1`: the post-training recipe the agent
 actually shipped — which data, in what mixture, trained with which algorithm at which
-hyper-parameters — read out of that run's own trajectory and anchored to it quote by quote.
+hyper-parameters — read out of that run's own trajectory. The algorithms and the data
+mixture are anchored to it quote by quote; the rest of the row is not, and the share is
+measured below.
 
 The split itself is `gsm8k-gemma-holdout-v1.yaml`; this file adds nothing to its membership and
 changes nothing about it. It is a *reading* of the 143 train runs, and it is only as good as
@@ -21,9 +23,12 @@ the audit reported below — which is why the audit is here and not in a commit 
 | benchmark | `gsm8k` |
 | population | the 143 runs in `splits.train`, unchanged |
 
-Both pins are the split's, copied here so this file can be checked on its own. Nothing was
-read from anywhere else: the only admissible evidence for a claim in a row is that run's own
-event stream at that revision.
+Both pins are the split's, copied here so this file can be checked on its own. The rule every
+model in the chain was given: the only admissible evidence for a claim in a row is that run's
+own event stream at that revision. That is the instruction, not a proven property of the
+output — one row's `unresolved` ends "The harness records 0.818", and 0.818 is the
+catalogue's accuracy for that row and appears nowhere in its digest. Treat the rule as what
+was asked for, and the anchors below as what can be checked.
 
 ## One row
 
@@ -36,14 +41,24 @@ The recipe, extracted — `pipeline` (the normalised stage order, e.g. `sft→rf
 not settle), `confidence`.
 
 The outcome, joined on afterwards — `accuracy`, `stderr`, `total_cost_usd`, `num_turns`,
-`duration_ms`. **Afterwards** is load-bearing: the digest the extractor read carries no score
-at all, so it could not describe a recipe as good because it knew the number was good.
+`duration_ms`. **Afterwards** means the join, and nothing stronger. No extracted field was
+conditioned on the catalogue's number, because the catalogue was not read until every row was
+written. It does **not** mean the extractor worked blind: agents evaluate their own models
+inside the run and say so, the filter deliberately keeps the tail of a result that follows a
+training command, and so most digests do state a score. On a small number of rows one of those
+stated scores rounds to the same value the catalogue later joined on. If you need a recipe that
+could not have been written by a model that knew roughly how the run turned out, this file does
+not give you one — and because the digests are not shipped, that is not something you can
+re-check from the release.
 
 The audit, per row — `extraction.{status, problems, evidence_anchors, repair_round, ...}`.
 
 Every `algorithms[]` and `datasets[]` entry carries `evidence_i` (an event index in the full
 stream) and `evidence_quote` (text from that event). That pair is what makes a row checkable
-rather than merely plausible.
+rather than merely plausible — and it is the *only* field pair that carries one.
+`hyperparams`, `inference_tricks[]`, `discarded[]` and `unresolved[]` have no anchor, so
+"anchored quote by quote" is true of the algorithms and the data mixture and of nothing else
+in the row. The share is in the table below.
 
 ## How it was built
 
@@ -94,11 +109,25 @@ look-alike characters folded to ASCII, no fuzzy matching, no edit distance:
 | verdict | anchors | share | meaning |
 |---|---|---|---|
 | `ok` | 735 | 100.00% | verbatim inside the block it cites |
+| `elided` | 0 | 0.00% | two real spans of the cited block joined by `...`, in order |
+| `wrong-block` | 0 | 0.00% | the text is in the digest, but not at the cited event |
+| `absent` | 0 | 0.00% | nowhere in the digest — a fabricated quote |
+| `too-short` | 0 | 0.00% | under 8 characters, so it anchors nothing either way |
+| `no-anchor` | 0 | 0.00% | the entry carries no quote or no event index |
 
 735 anchors total. Reproduce with `awm.analysis.evidence.audit(row, digest_text)`;
 `tests/test_evidence.py` pins the checker against paraphrase, out-of-order elision and
 cross-block quotes, because a lenient checker would turn this table into a restatement of the
 extractor's own confidence.
+
+**Coverage: 735 of 2,191 (34%) list entries in the file carry an anchor at all.** The other 1,456 are `inference_tricks`, `discarded`, `unresolved` entries. `hyperparams` is a third case and the easiest to misread: it carries an `evidence_i` on almost every row but never an `evidence_quote`, so it names a block without quoting it, and there is nothing for the matcher to fail. Those fields are the extractor's prose, checked by a reader and not by a matcher, and a green anchor table says nothing whatever about them.
+
+**This table is partly fitted, and the fit is the point.** A `wrong-block` or `absent` verdict
+was a major fault, a major fault bought a repair, and the repair was told to fix the quote. So
+a clean column here does not say the extractor got its quotes right first time; it says the
+quotes that survived the loop are verbatim. What the loop could not do is invent an anchor
+where the digest had none — that path ends in a deleted entry or a `flagged` row, both visible
+above.
 
 ### By wire format
 
@@ -201,21 +230,21 @@ text shipped here and it is still there. 14 were repaired first and faulted agai
 than dropped, because dropping them would make the audit look cleaner than the data is. Filter on
 `extraction.status != "flagged"` if a clean subset is what you need:
 
-- `claude_claude-opus-4-6_10h_run2/gsm8k_Qwen_Qwen3-4B-Base_16855638` — **major** — algorithms[] records ONLY the stage-1 full-parameter SFT (train_full.py [197], train_data_v2.jsonl -> /home/ben/task/final_model, complete at [224]). But that is not the last training run the digest s
-- `claude_non_api_claude-opus-4-8_10h_run2/gsm8k_Qwen_Qwen3-4B-Base_17310168` — **major** — These four values describe the SHIPPED v3, but the digest has no v3 training command at all. In the whole stream train_sft.py is invoked exactly once, the abandoned v1 at line 155 (`timeout 7200 pytho
-- `claude_non_api_claude-opus-5_10h_run1/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_17415831` — **major** — MAJOR. The stated derivation is contradicted by the digest. The recipe writes: "175 optimizer steps x 96 prompts/step = 16,800 unique prompts (grpo_v1 took rows 0-12,000 and grpo_v2 rows 12,000-16,800
-- `claude_non_api_claude-opus-5_10h_run1/gsm8k_Qwen_Qwen3-4B-Base_17415829` — **major** — The contamination result is attributed to the shipped corpus, but the digest attributes it to a DIFFERENT, discarded file. datasets[0].filtering reads 'prep_data.py [224] as invoked at [408] ... Conta
-- `claude_non_api_max_claude-fable-5_1m__10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17334179` — **major** — MAJOR — unanchored mechanism, contradicted by the only shipped code in the digest. The recipe states the orca filter as "kept only solutions whose final sentence OF THE LAST NON-EMPTY LINE contains ex
-- `codex_non_api_high_gpt-5.3-codex_10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_16917995` — **major** — 0.05 has exactly one source: the argparse default of train_gsm8k_masked.py in [277]. But the digest proves on its own that this file was changed before the shipped training run -- parse_args() in [277
-- `codex_non_api_high_gpt-5.3-codex_10h_run3/gsm8k_Qwen_Qwen3-4B-Base_16919979` — **major** — Neither value comes from v3's invocation command; both come from what the recipe itself admits is "the argparse default in [67], not overridden by v3". But the digest itself refutes that premise: [67]
-- `codex_non_api_max_gpt-5.6-sol_10h_run1/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_17397511` — **major** — MAJOR — fabricated hyperparameter pinned to a block that does not contain it. The entry reads "probes at lr 5e-6 cosine [394] and lr 1e-6 constant [426]". Block [394] (digest line 186) is `python trai
-- `codex_non_api_max_gpt-5.6-sol_10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17404247` — **major** — MAJOR. Listed as a SHIPPED stage-2 dataset with n_examples=7371, but no block in the digest shows any training run reading this file. `data/system_train.jsonl` occurs exactly once in the whole digest 
-- `codex_non_api_xhigh_gpt-5.5_10h_run2/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_17138216` — **major** — Cites event numbers that do not exist in the digest at all. The text says runs/full_exact_e2_stop_imend "appears only as an input ([110],[214],[222],[248])", but the digest's block indices run 13...81
-- `cursor_cli_cursor-grok-4.5-high_10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17404232` — **major** — States that "the contamination filters in the digest belong to the other, unused files combined_math_train.jsonl [72], combined_math_clean.jsonl [195] and fewshot_math_train.jsonl [243]". fewshot_math
-- `glmx_glm-5.2-preview_1m__10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17341965` — **major** — "The harness records 0.818." — 0.818 appears NOWHERE in the digest (grep for 0.818/818 returns nothing). The digest's only recorded scores are 0.828 and 0.810 in the [923] echo, and 82.8 / 80.97 / 82.
-- `kimi_claude_k3-0715_1m__10h_run2/gsm8k_Qwen_Qwen3-4B-Base_17404545` — **major** — Reports 7473 gold rows, but the digest never prints the gold row count of sft_v1.jsonl. The 7473 at [37260] is only a coverage denominator ("Coverage: 7354/7473 questions"), and the 7,473 at [37433] i
-- `opencode_opencode_gemini-3.1-pro_10h_run1/gsm8k_Qwen_Qwen3-1.7B-Base_16868240` — **major** — The main field reports train_v3.py, but no shell event in the digest ever launches it — not one of the 19 shell blocks is `python train_v3.py`. Conversely, train.py (v1) is the only pipeline launched 
-- `opencode_zai_glm-5_10h_run2/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_16853280` — **major** — FABRICATED DENOMINATOR. The text reads "The digest ends at [146] (turn 51 of 54)". The string "54" appears NOWHERE in the digest (`grep -n '54'` -> no match). The digest header carries only three line
+- `claude_claude-opus-4-6_10h_run2/gsm8k_Qwen_Qwen3-4B-Base_16855638` — **major** — algorithms[] records ONLY the stage-1 full-parameter SFT (train_full.py [197], train_data_v2.jsonl -> /home/ben/task/final_model, complete at [224]). But that is not the last training run the digest …
+- `claude_non_api_claude-opus-4-8_10h_run2/gsm8k_Qwen_Qwen3-4B-Base_17310168` — **major** — These four values describe the SHIPPED v3, but the digest has no v3 training command at all. In the whole stream train_sft.py is invoked exactly once, the abandoned v1 at line 155 ( …
+- `claude_non_api_claude-opus-5_10h_run1/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_17415831` — **major** — MAJOR. The stated derivation is contradicted by the digest. The recipe writes: "175 optimizer steps x 96 prompts/step = 16,800 unique prompts (grpo_v1 took rows 0-12,000 and grpo_v2 rows …
+- `claude_non_api_claude-opus-5_10h_run1/gsm8k_Qwen_Qwen3-4B-Base_17415829` — **major** — The contamination result is attributed to the shipped corpus, but the digest attributes it to a DIFFERENT, discarded file. datasets[0].filtering reads 'prep_data.py [224] as invoked at [408] ... …
+- `claude_non_api_max_claude-fable-5_1m__10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17334179` — **major** — MAJOR — unanchored mechanism, contradicted by the only shipped code in the digest. The recipe states the orca filter as "kept only solutions whose final sentence OF THE LAST NON-EMPTY LINE contains …
+- `codex_non_api_high_gpt-5.3-codex_10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_16917995` — **major** — 0.05 has exactly one source: the argparse default of train_gsm8k_masked.py in [277]. But the digest proves on its own that this file was changed before the shipped training run -- parse_args() in …
+- `codex_non_api_high_gpt-5.3-codex_10h_run3/gsm8k_Qwen_Qwen3-4B-Base_16919979` — **major** — Neither value comes from v3's invocation command; both come from what the recipe itself admits is "the argparse default in [67], not overridden by v3". But the digest itself refutes that premise: …
+- `codex_non_api_max_gpt-5.6-sol_10h_run1/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_17397511` — **major** — MAJOR — fabricated hyperparameter pinned to a block that does not contain it. The entry reads "probes at lr 5e-6 cosine [394] and lr 1e-6 constant [426]". Block [394] (digest line 186) is …
+- `codex_non_api_max_gpt-5.6-sol_10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17404247` — **major** — MAJOR. Listed as a SHIPPED stage-2 dataset with n_examples=7371, but no block in the digest shows any training run reading this file. `data/system_train.jsonl` occurs exactly once in the whole digest …
+- `codex_non_api_xhigh_gpt-5.5_10h_run2/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_17138216` — **major** — Cites event numbers that do not exist in the digest at all. The text says runs/full_exact_e2_stop_imend "appears only as an input ([110],[214],[222],[248])", but the digest's block indices run …
+- `cursor_cli_cursor-grok-4.5-high_10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17404232` — **major** — States that "the contamination filters in the digest belong to the other, unused files combined_math_train.jsonl [72], combined_math_clean.jsonl [195] and fewshot_math_train.jsonl [243]". …
+- `glmx_glm-5.2-preview_1m__10h_run2/gsm8k_Qwen_Qwen3-1.7B-Base_17341965` — **major** — "The harness records 0.818." — 0.818 appears NOWHERE in the digest (grep for 0.818/818 returns nothing). The digest's only recorded scores are 0.828 and 0.810 in the [923] echo, and 82.8 / 80.97 / …
+- `kimi_claude_k3-0715_1m__10h_run2/gsm8k_Qwen_Qwen3-4B-Base_17404545` — **major** — Reports 7473 gold rows, but the digest never prints the gold row count of sft_v1.jsonl. The 7473 at [37260] is only a coverage denominator ("Coverage: 7354/7473 questions"), and the 7,473 at [37433] …
+- `opencode_opencode_gemini-3.1-pro_10h_run1/gsm8k_Qwen_Qwen3-1.7B-Base_16868240` — **major** — The main field reports train_v3.py, but no shell event in the digest ever launches it — not one of the 19 shell blocks is `python train_v3.py`. Conversely, train.py (v1) is the only pipeline launched …
+- `opencode_zai_glm-5_10h_run2/gsm8k_HuggingFaceTB_SmolLM3-3B-Base_16853280` — **major** — FABRICATED DENOMINATOR. The text reads "The digest ends at [146] (turn 51 of 54)". The string "54" appears NOWHERE in the digest (`grep -n '54'` -> no match). The digest header carries only three …
 
 ## Regenerating
 
