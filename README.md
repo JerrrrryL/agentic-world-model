@@ -37,7 +37,7 @@ appears; `LICENSE` §5.9 already covers both repository names. The former packag
 | `doc/meeting/aug_24_data_select.md` | Which benchmarks and tasks passed those rules, the trajectory assets, GPU budgets |
 | `doc/reference/harness_facts/` | Verbatim research on each upstream harness: task format, runner, agent interface, trajectory format |
 | `doc/spec/2026-08-24-repo-architecture.md` | This repo's design: hybrid runtime, event schema, phases |
-| `splits/` | Committed data contracts: run-level train/test splits and task selections, pinned to upstream revisions |
+| `splits/` | Committed data contracts: run-level train/test splits and task selections, pinned to upstream revisions, plus what was read out of the runs they name (`*.recipes.jsonl`, each with a generated `.md` reporting its own audit) |
 | `tasks/` | Harbor task directories for the benchmarks that ship no runner |
 | `awm/` | The Python package: our methods live here |
 | `third_party/` | Upstream repos as pinned submodules; never vendored |
