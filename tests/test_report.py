@@ -155,6 +155,36 @@ class TestFlagged:
         assert "ships a mixture the digest shows was abandoned" in md
         assert "the quote is a little short" not in md
 
+    def test_a_clipped_objection_says_it_was_clipped(self) -> None:
+        """A hard slice at 200 characters ends mid-word, and a reader who cannot
+        see the cut reads the stump as the reviewer's own sloppiness."""
+        issue = "the mixture is wrong because " + "reason and " * 40
+        md = report.render([record("b/3", status="flagged", worst="major", problems=[
+            {"field": "datasets", "issue": issue, "severity": "major", "lens": "shipped"}])],
+            SPEC, "x.jsonl")
+        assert " …" in md
+        assert "reaso\n" not in md and "reaso " not in md
+
+    def test_clipping_never_leaves_a_backtick_open(self) -> None:
+        """The one that actually shipped: the cut landed inside a code span, so
+        the odd backtick swallowed the rest of the line into `code` and the
+        reader blamed the data rather than the renderer."""
+        issue = "x" * 190 + " `--learning-rate 5e-7 --epochs 3`"
+        md = report.render([record("b/3", status="flagged", worst="major", problems=[
+            {"field": "hyperparams", "issue": issue, "severity": "major", "lens": "evidence"}])],
+            SPEC, "x.jsonl")
+        line = next(ln for ln in md.splitlines() if "xxx" in ln)
+        assert line.count("`") % 2 == 0, line
+
+    def test_a_short_objection_is_left_exactly_as_written(self) -> None:
+        """The clip has to be invisible when it does not fire, or every short
+        objection grows an ellipsis that claims text nobody wrote."""
+        md = report.render([record("b/3", status="flagged", worst="major", problems=[
+            {"field": "datasets", "issue": "ships an abandoned mixture", "severity": "major",
+             "lens": "shipped"}])], SPEC, "x.jsonl")
+        assert "ships an abandoned mixture\n" in md or "ships an abandoned mixture" in md
+        assert "ships an abandoned mixture …" not in md
+
     def test_it_separates_the_rows_no_repair_ever_reached(self) -> None:
         """A row whose repair agent never returned is flagged for a different
         reason than one the reviewers faulted twice, and only the second is a
@@ -323,7 +353,32 @@ class TestTheCaveatsSurvive:
 
     def test_it_says_the_score_was_joined_after_extraction(self) -> None:
         md = report.render(RECORDS, SPEC, "x.jsonl")
-        assert "the digest the extractor read carries no score" in md
+        assert "the catalogue was not read until every row was" in md
+
+    def test_it_does_not_claim_the_extractor_worked_blind(self) -> None:
+        """The stronger sentence was in here for a while and it was false: the
+        agents evaluate their own models inside the run and the digest keeps the
+        tail of a result, so most digests do state a score. "Joined afterwards"
+        is a fact about the join and says nothing about what the extractor saw."""
+        md = report.render(RECORDS, SPEC, "x.jsonl")
+        assert "the digest the extractor read carries no score" not in md
+        assert "most digests do state a score" in md
+
+    def test_it_does_not_claim_the_evidence_rule_was_verified(self) -> None:
+        """"Nothing was read from anywhere else" is the instruction the models
+        were given. Stated as a property of the output it is refuted by the
+        output itself — one row's `unresolved` quotes the harness's accuracy,
+        which is nowhere in that row's digest."""
+        md = report.render(RECORDS, SPEC, "x.jsonl")
+        assert "That is the instruction, not a proven property" in md
+
+    def test_it_says_how_little_of_a_row_the_anchors_cover(self) -> None:
+        """"Anchored quote by quote" reads as a property of the row and is a
+        property of two of its fields. Without the denominator, a green anchor
+        table is read as a green row."""
+        line = report._coverage_line(RECORDS)
+        assert "list entries in the file carry an anchor at all" in line
+        assert "never an `evidence_quote`" in line
 
     def test_the_reproduce_instruction_names_a_real_entry_point(self) -> None:
         """The document tells a reader how to redo the anchor audit themselves.

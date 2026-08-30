@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from awm import splits
-from awm.analysis import report
+from awm.analysis import evidence, report
 from awm.paths import splits_dir
 
 SPLIT_ID = "posttrainbench/gsm8k-gemma-holdout-v1"
@@ -101,6 +101,15 @@ class TestEveryRowIsCheckable:
         }
         assert shapes == {("field", "issue", "lens", "severity")}
 
+    def test_every_row_tallies_the_same_anchor_verdicts(self, rows) -> None:
+        """One row extracted no algorithms and no datasets, so its tally is
+        empty while the other 142 carry counts. A ``Counter`` reads a missing key
+        as zero and this file reads a missing key as NA, so the two conventions
+        collide on exactly that row — and a columnar loader resolves the collision
+        the wrong way, giving it ``null`` where the truth is 0."""
+        shapes = {tuple(sorted(r["extraction"]["evidence_anchors"])) for r in rows}
+        assert shapes == {tuple(sorted(evidence.VERDICTS))}
+
     def test_flagged_rows_carry_the_problem_they_are_flagged_for(self, rows) -> None:
         """``flagged`` is the exclusion signal. A row flagged with nothing worse
         than a minor note would push a usable recipe out of everyone's filter."""
@@ -157,6 +166,41 @@ class TestItIsAllInOneLanguage:
         assert self._cjk(planted, "extraction") == [
             ("extraction.problems[0].<key>", "evidence_i未覆盖")
         ]
+
+
+class TestNoBuildMachinePathsSurvive:
+    """A reviewer supporting a claim with ``003.txt:1345`` or
+    ``/tmp/rx/digests/087.txt`` is citing a file that exists on no reader's disk.
+    The assembler rewrites those into what they named — the run's digest, a line
+    in it, a throwaway script — and this holds the rewrite in place.
+
+    The agent's *own* ``/tmp`` paths are the opposite case: ``/tmp/test_train``
+    and ``/tmp/grpo_smoke`` are things the run under study did, and scrubbing
+    them would edit the evidence. So the pattern is anchored to the two scratch
+    directories this harness owned and to the ``NNN.txt`` digest numbering, and
+    never to a bare ``/tmp/``."""
+
+    LEAK = re.compile(r"/tmp/(?:rx|qaudit)/|(?<![\w.])\d{3}\.txt|digests/")
+
+    def test_no_row_cites_a_file_only_the_build_machine_had(self, rows) -> None:
+        hits = sorted({m.group(0) for r in rows
+                       for m in self.LEAK.finditer(json.dumps(r, ensure_ascii=False))})
+        assert hits == []
+
+    def test_the_check_would_notice(self) -> None:
+        """Serialised, so the search reads dict keys as well as values — the last
+        thing that got past a walker here was a key with an empty value."""
+        for planted in ({"issue": "grep on /tmp/rx/digests/087.txt returns nothing"},
+                        {"repair_changed": ["hits [228] verbatim (003.txt:1345)"]},
+                        {"repair_changed": ["'7473' occurs 0 times in digests/039.txt"]},
+                        {"nothing in 003.txt:12": ""}):   # the leak spelled as a key
+            assert self.LEAK.search(json.dumps(planted)), planted
+
+    def test_the_check_leaves_the_agents_own_scratch_alone(self) -> None:
+        """The failure that would be invisible: a scrub wide enough to delete the
+        run's own paths, passing this suite while quietly editing the evidence."""
+        kept = {"issue": "`--output_dir /tmp/test_train` and `--out /tmp/grpo_smoke`"}
+        assert self.LEAK.search(json.dumps(kept)) is None
 
 
 class TestTheDocumentIsGenerated:

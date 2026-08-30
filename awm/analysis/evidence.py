@@ -52,6 +52,14 @@ from collections import Counter
 #: A quote shorter than this anchors nothing — ``"SFT"`` appears in every run.
 MIN_ANCHOR = 8
 
+#: Every verdict :func:`check` can return, worst-is-last within severity. Exists
+#: so a caller can zero-fill :func:`audit`'s tally: a ``Counter`` reports an
+#: absent key as ``0``, which is the right reading here and the opposite of the
+#: convention everywhere else in the recipe file, where an absent key is NA. A
+#: row with no anchors at all then has ``{}`` where every other row has counts,
+#: and a columnar reader loads the difference as null rather than zero.
+VERDICTS = ("ok", "elided", "wrong-block", "absent", "too-short", "no-anchor")
+
 #: Characters an extractor predictably retypes. Applied to both sides, so it can
 #: only merge spellings that look the same, never bridge different words.
 FOLD = {
