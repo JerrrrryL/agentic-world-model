@@ -320,9 +320,9 @@ by the same agent**. Until then, any result of the form "the trajectory predicts
 the outcome" is indistinguishable from "the agent predicts the outcome", which
 §1 already showed is worth 66 % of the variance.
 
-There is one hint that the crossing is worth paying for. At the coarse level the
-extraction already captures, some pipeline signatures *are* shared across
-agents — and they do not behave like one recipe:
+There is one hint that the crossing is worth paying for. At the coarse level
+`recipe_signal.py` reads the recipes at, some pipeline signatures *are* shared
+across agents — and they do not behave like one recipe:
 
 | pipeline signature | distinct agent families | accuracy spread |
 |---|---:|---:|
@@ -333,11 +333,19 @@ agents — and they do not behave like one recipe:
 | `sft>sft>sft` | 4 | 0.1941 |
 
 Nineteen different agents ran plain `sft` and landed 0.80 of accuracy apart. So
-the algorithm family — the level the extraction currently resolves — carries
-almost nothing; whatever signal exists is in the detail it discards (data mix,
-dataset choice, LR, epochs) or in execution quality. That is a second reason the
-extraction has to be re-run before a split is committed, and a first reason to
-believe a crossed rollout would actually resolve something.
+the algorithm family carries almost nothing; whatever signal exists is in finer
+detail — data mix, dataset choice, LR, epochs — or in execution quality.
+
+Note what is and is not to blame here. The extraction *schema* already records
+that detail: `datasets[].dataset_id`, `n_examples`, `share`, `filtering`, and a
+`hyperparams` block with `lr`, `epochs`, `batch_size`, `grad_accum`,
+`max_seq_len`, `scheduler`, `warmup`, `weight_decay`, `precision`. What throws
+it away is `feat()` in `tools/splitdx/recipe_signal.py`, which reduces each
+record to nine coarse summaries before the probe ever sees it. Reading the
+recipes at a finer grain costs no new extraction — only a different `feat()`.
+Coverage does: 143 of 1175 rows. That is the reason the extraction has to be
+re-run wide before a split is committed, and a first reason to believe a crossed
+rollout would resolve something.
 
 ## The blocker this exposed, which is bigger than the split
 
@@ -400,6 +408,100 @@ clause in the spec file, not in this document. Committing the 5-fold design
 first would be committing a well-built measuring instrument before knowing there
 is anything to measure.
 
+## The answer, at full power
+
+The extraction now covers all **1,175 runs** (`tools/extract_recipes.py`,
+15.4 minutes, 1,279 model calls, ~$244). Every record passes a mechanical anchor
+check: each `evidence_i` is an event index that exists in that run's digest and
+each `evidence_quote` is a literal span of that event. 1,171 passed on the first
+extraction or its one repair; the remaining 4 passed after the checker was
+hardened against a non-object list element.
+
+Two things had to be established before the answer means anything.
+
+### Is the cheap extraction the same measurement as the expensive one?
+
+`tools/extract_agree.py` re-scores the 143 runs both pipelines saw. Neither side
+is ground truth; disagreement bounds how much of an extraction is the extractor
+rather than the run.
+
+| | agreement |
+|---|---:|
+| pipeline signature, exactly | 62.9 % |
+| same after collapsing repeats (`sft>sft` ≡ `sft`) | 80.4 % |
+| same set of families, any order | 86.7 % |
+| dataset-id Jaccard (mean / median / exact / disjoint) | 0.787 / 1.000 / 64.3 % / 2.1 % |
+| `lr`, where both report one | 85.8 % |
+| `epochs` / `batch_size` / `grad_accum` / `max_seq_len` | 92.6 / 93.0 / 91.4 / 91.0 % |
+| `precision` | 70.0 % |
+
+The cheap tier is not worse on coverage — it fills `n_examples` on 54 % of
+datasets against gold's 45 %, and the same 76 % of hyperparameter slots — and it
+reports "low confidence" far less often (6 vs 22 of 143), which is the one place
+to distrust it.
+
+The interesting result is the ordering. **The coarse skeleton is the least
+reproducible part of the extraction and the fine detail is the most.** Two
+extractions of the same trajectory disagree about the pipeline signature 37 % of
+the time, and 17 of those 37 points are purely *how many re-runs of the same
+family count as shipped stages rather than as discarded attempts* — a definition
+question, not an observation. They agree about the learning rate 86 % of the
+time. So the feature the earlier passes leaned on is the noisy one.
+
+### What the recipe adds once the agent is known
+
+`tools/splitdx/recipe_signal2.py`, 1,175 rows, 28 cells, 26 agent families,
+21 features at the grain the recipe is written at, every number bucketed, each
+scored as R² minus its own within-family permutation null (500 draws), bar set
+at z > 3.5 for Bonferroni over 21 tests.
+
+Before conditioning, the recipe looks strong: `peft` scores +0.1749 excess at
+z = +93. After residualising on `agent_family` it scores **−0.0021**. Whether a
+run used LoRA or a full finetune is a fact about which agent it was.
+
+Three features survive:
+
+| feature | z | excess R² | share of residual |
+|---|---:|---:|---:|
+| `uses_rl` | +7.3 | +0.0049 | 0.49 % |
+| `n_datasets` | +4.4 | +0.0173 | 1.73 % |
+| `lr` | +3.8 | +0.0116 | 1.16 % |
+
+`top_dataset` has the largest excess of anything tested (+0.1183) and does not
+clear the bar — 394 levels over 1,175 rows is a near row identifier, and pass 2
+of the original probe exists precisely to stop that from counting.
+
+Three hits out of 21 tests is the regime where a result is most likely to be the
+search. Split-half, holding agent families intact so a family never straddles
+the two halves, 12 halves of ~587 rows. Scored against the *attenuated*
+expectation — halving the rows lowers the z a real effect can reach by about
+√2, so re-imposing z > 3.5 on half the data would be demanding a bigger effect
+than the one that was found:
+
+| feature | full z | expected on a half | observed median | ratio | worst half |
+|---|---:|---:|---:|---:|---:|
+| `uses_rl` | +7.3 | +5.2 | +3.4 | 0.65 | +0.3 |
+| `n_datasets` | +4.4 | +3.1 | +2.8 | 0.90 | −0.0 |
+| `lr` | +3.8 | +2.7 | +1.7 | 0.62 | +0.1 |
+
+Only `n_datasets` attenuates no faster than the halving explains, and all three
+vanish on at least one half.
+
+**The answer, in three sentences.** Something in the recipe is real — three
+features clear a corrected bar against a permutation null after the agent is
+conditioned out. It is small: 0.5–1.7 % of the residual variance each, against
+the 66 % `agent_model` takes on its own. It is not sturdy, and 1,175 runs is
+about the smallest corpus that could see it at all, with no more runs to add.
+
+This closes the power question that §"The blocker" left open. It was not a power
+problem. A choice-set predictor built on these features would be predicting the
+agent, which is exactly what the 5-fold agent-family split exists to forbid — so
+the split is still the right instrument, and there is still nothing here for it
+to measure. What remains untested is the claim one step up: that a model reading
+the *trajectory* beats these 21 summaries of it. That is the next measurement,
+and it is the last one this corpus can support before the crossed rollout in
+§"The confound no split can fix" becomes the only way forward.
+
 ## Reproducing
 
 ```bash
@@ -408,8 +510,14 @@ cd tools/splitdx
 python3 run.py designs/owner.py designs/owner2.py   # per-design detail
 python3 compare.py                                  # the ranking table
 python3 kfold.py                                    # the recommended design
-python3 recipe_signal.py                            # is there anything in the recipe?
+python3 recipe_signal.py                            # is there anything in the recipe? (143 rows)
+python3 recipe_signal2.py                           # the same question at 1175 rows, finer features
 python3 stderr_leak.py                              # which columns are the label in disguise
+python3 mask_probe.py                               # would masking the agent do instead of holding it out?
+
+cd ../..                                            # extraction, from the repo root
+python3 tools/extract_recipes.py                    # all 1175, resumable, ~15 min, ~$244
+python3 tools/extract_agree.py                      # cheap tier vs the 143 heavy records
 ```
 
 `run.py` evaluates the shipped split first as a positive control and exits

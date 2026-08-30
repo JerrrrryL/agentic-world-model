@@ -1,0 +1,113 @@
+1175 rows with an accuracy, 28 cells (7 benchmarks x 4 base models), 26 agent families
+  aime2025=197  gsm8k=193  arenahardwriting=179  humaneval=172  gpqamain=168  healthbench=150  bfcl=116
+
+=== 1. how much of each feature is actually filled in? ===
+               feature  levels   filled   most common three
+    pipeline_signature      83      99%   sft:687  sft>sft:125  distill>sft:57
+    pipeline_collapsed      35      99%   sft:902  distill>sft:61  sft>grpo:31
+              n_stages       9     100%   1:712  2:244  3:121
+               uses_rl       2     100%   False:1082  True:93
+           top_dataset     394      71%   (none):339  open-r1/openr1-mat:51  meta-math/metamath:50
+        dataset_id_set     815      99%   openai/gsm8k:59  meta-math/metamath:42  open-r1/openr1-mat:33
+            n_datasets       7     100%   1:237  6:228  2:201
+         dataset_kinds      15      99%   public:731  public|synthetic-s:214  public|synthetic-o:83
+       uses_self_synth       2     100%   False:877  True:298
+         biggest_share       7      67%   1.0:675  (none):390  0.6:44
+    biggest_n_examples      11      71%   +4.5:355  (none):339  +4.0:204
+  total_train_examples      12      58%   (none):497  +4.5:247  +4.0:183
+                    lr      10      91%   -5.0:293  -4.5:273  -3.5:175
+                epochs       7      82%   <=1:441  <=2:288  (none):215
+             eff_batch      10      88%   +4.0:437  +5.0:377  (none):144
+           max_seq_len       9      84%   +11.0:447  +12.0:226  +10.0:205
+                  peft       4     100%   full:616  lora:405  qlora:141
+             precision      14      77%   bf16:802  (none):266  bfloat16:46
+             scheduler      14     100%   cosine:674  :429  cosine_with_min_:26
+    n_inference_tricks       5     100%   4:520  3:382  2:227
+           n_discarded       6     100%   5:863  4:215  3:82
+          n_unresolved       4     100%   4:662  5:379  3:133
+            confidence       4     100%   medium:823  high:300  low:51
+
+=== 2. cardinality-controlled, within cell (500 permutation draws) ===
+               feature  levels       R2     null   excess       z
+          agent_family      26   0.3809   0.0223  +0.3587   +55.3  meta
+           agent_model      28   0.3809   0.0244  +0.3565   +55.9  meta
+                  peft       4   0.1773   0.0024  +0.1749   +93.0  RECIPE
+          trace_format       4   0.1745   0.0027  +0.1719   +76.7  meta
+    n_inference_tricks       5   0.1702   0.0053  +0.1649   +46.4  RECIPE
+    pipeline_collapsed      35   0.1962   0.0326  +0.1636   +18.3  RECIPE
+    pipeline_signature      83   0.2375   0.0807  +0.1568    +9.7  RECIPE
+         dataset_kinds      15   0.1508   0.0170  +0.1338   +23.1  RECIPE
+                    lr      10   0.1367   0.0140  +0.1228   +15.9  RECIPE
+        dataset_id_set     815   0.8320   0.7117  +0.1203    +5.6  RECIPE
+              n_stages       9   0.1266   0.0125  +0.1140   +14.3  RECIPE
+           top_dataset     394   0.4773   0.3702  +0.1070    +3.5  RECIPE
+             scheduler      14   0.1171   0.0115  +0.1056   +13.8  RECIPE
+            n_datasets       7   0.1093   0.0074  +0.1019   +26.6  RECIPE
+    biggest_n_examples      11   0.0828   0.0098  +0.0730   +16.8  RECIPE
+             precision      14   0.0764   0.0135  +0.0630    +8.0  RECIPE
+       uses_self_synth       2   0.0577   0.0017  +0.0560   +30.1  RECIPE
+               uses_rl       2   0.0436   0.0010  +0.0426   +36.3  RECIPE
+             eff_batch      10   0.0526   0.0111  +0.0415    +9.5  RECIPE
+            confidence       4   0.0404   0.0036  +0.0368   +12.1  RECIPE
+           max_seq_len       9   0.0508   0.0155  +0.0353    +6.8  RECIPE
+           n_discarded       6   0.0385   0.0050  +0.0334    +9.6  RECIPE
+  total_train_examples      12   0.0405   0.0106  +0.0299    +6.0  RECIPE
+                epochs       7   0.0354   0.0068  +0.0286    +7.7  RECIPE
+          n_unresolved       4   0.0036   0.0028  +0.0008    +0.3  RECIPE
+         biggest_share       7   0.0059   0.0056  +0.0003    +0.1  RECIPE
+         trained_model       4   0.0070   0.0070  +0.0000    +1.3  meta
+
+=== 3. what the recipe adds once the agent is known ===
+    26 families; residual keeps 62% of the within-cell variance; 21 features tested, so the bar is z>3.5 (Bonferroni), not z>3
+               feature  levels       R2     null   excess       z
+           top_dataset     394   0.4088   0.2905  +0.1183    +3.4
+    pipeline_collapsed      35   0.0483   0.0212  +0.0271    +3.0
+    pipeline_signature      83   0.0649   0.0428  +0.0221    +1.9
+         dataset_kinds      15   0.0314   0.0116  +0.0198    +3.2
+            n_datasets       7   0.0233   0.0060  +0.0173    +4.4  <-- survives
+                    lr      10   0.0173   0.0058  +0.0116    +3.8  <-- survives
+           max_seq_len       9   0.0156   0.0063  +0.0093    +3.1
+             eff_batch      10   0.0133   0.0074  +0.0059    +1.7
+               uses_rl       2   0.0054   0.0005  +0.0049    +7.3  <-- survives
+                epochs       7   0.0106   0.0060  +0.0046    +1.3
+    n_inference_tricks       5   0.0078   0.0041  +0.0037    +1.1
+          n_unresolved       4   0.0047   0.0018  +0.0029    +1.9
+    biggest_n_examples      11   0.0120   0.0096  +0.0025    +0.5
+             scheduler      14   0.0111   0.0088  +0.0023    +0.4
+             precision      14   0.0182   0.0162  +0.0020    +0.2
+       uses_self_synth       2   0.0019   0.0006  +0.0013    +1.4
+              n_stages       9   0.0061   0.0048  +0.0012    +0.4
+           n_discarded       6   0.0063   0.0052  +0.0011    +0.3
+         biggest_share       7   0.0043   0.0053  -0.0010    -0.3
+                  peft       4   0.0017   0.0037  -0.0021    -0.6
+  total_train_examples      12   0.0085   0.0131  -0.0046    -0.5
+
+  3 of 21 recipe features survive conditioning on the agent: uses_rl, n_datasets, lr
+
+                 feature       z  excess R2  share of the residual
+                 uses_rl    +7.3    +0.0049   0.49%
+              n_datasets    +4.4    +0.0173   1.73%
+                      lr    +3.8    +0.0116   1.16%
+  top_dataset has the largest excess (+0.1183) but +3.4 z on 394 levels -- it does not clear the bar, and a near-row-id never should on this test.
+
+=== 4. split-half stability: does each survivor survive on half the rows? ===
+  each half is ~587 rows and 13 families, so a real effect should reach about its full-data z over sqrt(2) -- that, not the z>3.5 bar, is the comparison
+
+                 feature  full z  expected  observed  ratio    min   >bar
+                 uses_rl    +7.3      +5.2      +3.4   0.65   +0.3   6/12
+              n_datasets    +4.4      +3.1      +2.8   0.90   -0.0   2/12
+                      lr    +3.8      +2.7      +1.7   0.62   +0.1   2/12
+
+  holds up at >=0.85 of the attenuated expectation: n_datasets
+
+  Read it as three sentences. (1) Something in the recipe is real: three
+  features clear a Bonferroni bar against a permutation null, after the
+  agent is conditioned out, and `peft` -- +0.1749 excess before
+  conditioning, -0.0021 after -- shows what the conditioning is doing.
+  (2) It is small: 0.5-1.7% of the residual variance each, against the
+  66% agent identity takes on its own. (3) It is not sturdy: every
+  survivor drops to near zero on at least one half, and only
+  `n_datasets` attenuates no faster than halving the rows explains.
+  1175 runs is about the smallest corpus that can see this at all, and
+  there are no more runs to add. A predictor built on these features
+  would be predicting the agent.

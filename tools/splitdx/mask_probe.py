@@ -121,8 +121,9 @@ def main() -> int:
         a = [r["accuracy"] for r in rows if r["sig"] == k]
         print(f"{k[:34]:>34} {len(v):7d} {max(a)-min(a):11.4f}")
     print("\n  The algorithm family is nearly uninformative: 19 agents ran plain `sft` and\n"
-          "  landed 0.80 of accuracy apart. Whatever signal exists is in the detail the\n"
-          "  extraction currently discards, or in execution quality.")
+          "  landed 0.80 of accuracy apart. Whatever signal exists is finer than this --\n"
+          "  data mix, dataset ids, LR, epochs -- or it is execution quality. The schema\n"
+          "  records all of that; it is feat() in recipe_signal.py that drops it.")
     return 0
 
 

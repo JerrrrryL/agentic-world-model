@@ -1,0 +1,44 @@
+143 gold records, 1175 tier-1 records, 143 runs in both
+
+=== 1. the coarse skeleton: do the two tiers agree what the run did? ===
+  pipeline signature identical   62.9%  ###############.........  (90/143)
+  stage count identical          22.4%  #####...................  median delta +1, tier-1 finds more in 104, fewer in 7
+
+                    gold                  tier-1   n
+                 sft>sft                     sft   6
+             sft>sft>sft                     sft   3
+                     sft                  (none)   3
+                     sft                 sft>sft   2
+           sft>grpo>grpo                sft>grpo   2
+                 rft>sft                     rft   2
+             sft>sft>sft                 sft>sft   2
+                     sft             sft>sft>sft   1
+
+  same signature, exactly            62.9%
+  same after collapsing repeats      80.4%   (`sft>sft` == `sft`)
+  same set of families, any order    86.7%
+  pipeline length: tier-1 shorter in 36, longer in 12, equal in 95
+
+=== 2. the fine detail this re-extraction exists to get ===
+  dataset-id Jaccard   mean 0.787  median 1.000  exact 64.3%  disjoint 2.1%
+  dataset count        identical 73.4%, tier-1 lists more in 26, fewer in 12
+
+  hyperparameter   agree  differ  one-null  both-null   both-present agreement
+  ----------------------------------------------------------------------------
+              lr     109      18         4         12    85.8% ##############..
+          epochs     100       8        13         22    92.6% ###############.
+      batch_size     107       8        12         16    93.0% ###############.
+      grad_accum     106      10        11         16    91.4% ###############.
+     max_seq_len      91       9        17         26    91.0% ###############.
+          warmup      81      13        12         37    86.2% ##############..
+    weight_decay      55       0        19         69   100.0% ################
+       scheduler      75      11         8         49    87.2% ##############..
+       precision      70      30        11         32    70.0% ###########.....
+
+  total_train_examples (5% tol): agree=32  both-null=63  differ=14  one-null=34
+
+=== 3. what the cheap tier cost in coverage and self-report ===
+    gold  confidence high=49 medium=72 low=22   hyperparams filled 755/1001 (75%)   n_examples 178/392 (45%)   share 183/392 (47%)
+  tier-1  confidence high=41 medium=96 low=6   hyperparams filled 763/1001 (76%)   n_examples 220/407 (54%)   share 180/407 (44%)
+
+  tier-1 on these runs: verified=143 | repair rounds 0:131 1:12

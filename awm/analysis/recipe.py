@@ -159,15 +159,27 @@ def _clip(event: dict, act: str, text: str, cap: int) -> dict:
     return {"i": event["i"], "turn": event.get("turn"), "act": act, "text": clipped}
 
 
-def render(run: str, events: list[dict], meta: dict | None = None) -> str:
+HEADER_KEYS = ("trained_model", "benchmark", "trace_format", "time_budget_h")
+
+
+def render(run: str, events: list[dict], meta: dict | None = None,
+           include_agent: bool = False) -> str:
     """Render a digest as the text an extractor reads.
 
     ``meta`` carries only what the extractor needs to disambiguate — the base
     model being post-trained, the benchmark, the harness. It must not carry the
     score; see the module docstring.
+
+    ``include_agent`` adds ``agent_model`` to the header. It defaults to False
+    because which agent wrote the trajectory is the strongest single predictor
+    of the outcome (66% of accuracy variance) and naming it invites the
+    extractor to describe the agent instead of the recipe. Callers who want the
+    old behaviour must ask for it. The ``run`` argument is the caller's label —
+    pass the run name, not ``{experiment}__{run_name}``: 962 of 1175
+    experiment names spell the agent out.
     """
     head = [f"# run: {run}"]
-    for key in ("trained_model", "benchmark", "trace_format", "agent_model", "time_budget_h"):
+    for key in HEADER_KEYS + (("agent_model",) if include_agent else ()):
         if meta and key in meta:
             head.append(f"# {key}: {meta[key]}")
     head.append(f"# recipe-bearing events: {len(events)}")
