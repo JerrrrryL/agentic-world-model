@@ -498,9 +498,106 @@ problem. A choice-set predictor built on these features would be predicting the
 agent, which is exactly what the 5-fold agent-family split exists to forbid — so
 the split is still the right instrument, and there is still nothing here for it
 to measure. What remains untested is the claim one step up: that a model reading
-the *trajectory* beats these 21 summaries of it. That is the next measurement,
-and it is the last one this corpus can support before the crossed rollout in
-§"The confound no split can fix" becomes the only way forward.
+the *trajectory* beats these 21 summaries of it. That is the next section.
+
+## The summaries were the problem, not the corpus
+
+The section above is a null on 21 features. It is *not* a null on the recipe,
+and the difference turns out to be almost the whole result.
+
+**The question, made answerable.** Take two runs from the same cell (same
+benchmark, same base model) that were *also written by the same agent family*,
+and ask which scored higher. Within-family pairing is the conditioning — it asks
+what is left once the agent is known, the same question the 5-fold split asks,
+but as a decision instead of an R². Pairwise puts the floor at exactly 0.5 and
+removes calibration from the problem. Restricting to an accuracy gap ≥ 0.05
+leaves **540 pairs over 13 families and 27 cells**, median gap 0.124. Every pair
+is asked twice, A-first and B-first; a self-contradiction scores 0.5, as does an
+abstention, so arms with different coverage stay comparable.
+
+**The threat that had to be measured first.** Agents run their own evals and
+print the numbers. A regex for score-shaped numbers next to an eval word finds
+**4,074 of them across 593 runs**; a rule that reads nothing but the largest such
+number and picks the run with the bigger one is right 61.8 % of the time on the
+75.6 % of pairs it can decide. So "a model reads the trajectory" had to be split
+into reading the recipe and reading the answer, or the measurement would have
+been an OCR benchmark.
+
+| what the arm is shown | acc | 95 % CI |
+|---|---:|---:|
+| effort only — turns, wall time, cost, all bucketed, fitted | 43.1 % | [39.1, 47.2] |
+| the 21 bucketed features, **fitted** leave-one-family-out | 52.6 % | [48.3, 56.9] |
+| the largest self-reported number, and nothing else | 58.9 % | [55.2, 62.5] |
+| the same 21 bucketed features, **read by a model** | 59.0 % | [55.1, 62.8] |
+| the full extraction record, read by a model | 76.8 % | [73.6, 79.9] |
+| the trajectory digest, **score numbers blanked** | 85.7 % | [83.0, 88.4] |
+| the trajectory digest, unmodified | 86.7 % | [83.9, 89.4] |
+
+Paired sign tests over the shared pairs, rung by rung: effort → features
+164–113 (p = 0.003), features → summary 151–112 (p = 0.019), summary → recipe
+190–77, recipe → redact 101–35 (both p < 1e-4), redact → raw 23–14 (p = 0.19).
+Two of those deserve to be read as results in their own right. Blanking 95 % of
+the score-shaped numbers costs one point and cannot be distinguished from noise.
+And `selfreport` vs `summary` is **155–154, p = 1.0** — a model given the 21
+bucketed features is exactly as accurate as a regex that reads nothing but the
+largest number the agent printed about itself. Those two arms know nothing in
+common; they are simply both nearly useless.
+
+**Four ways of checking it is not the leak.**
+
+1. Redaction removes 955 → 47 score-shaped numbers per 200 runs, and costs
+   1.0 pp.
+2. On the **132 pairs where the regex cannot compare the two runs at all**, the
+   digest arms hold **83.0 %** [76.5, 88.6]. On the 22 where *neither* run
+   printed a readable score, 81.8 % [63.6, 95.5].
+3. On the 312 pairs where the model's own stated reason never quotes a measured
+   score, `raw` is at **82.9 %**.
+4. `raw` agrees with the self-report rule on 63.7 % of the 383 pairs that rule
+   decides. If `raw` were that rule with extra steps, agreement would be 100 %.
+   Two arms this accurate (87.9 % and 61.8 % on those pairs) that decided
+   *independently* would agree 58.9 % of the time by arithmetic alone. Observed
+   is 63.7 %: they overlap a little, and almost all of that is both being right.
+
+**And not the effort proxy either.** The obvious rival explanation is that the
+model is reading which run finished and worked, not what it did. Turns, wall
+time, cost and elapsed time, bucketed and fitted the same way, come in at
+**43.1 %** — significantly *below* chance. Working harder predicts scoring worse
+here, so an arm that used effort as its signal would have to be beaten by a coin,
+and adding effort to the 21 features moves nothing (50.6 %).
+
+**Where the information actually went.** The three-rung gap is the finding:
+
+- **59.0 → 76.8** (17.8 pp) is what bucketing into 21 categoricals destroys. The
+  model reading those 21 values has all the prior knowledge in the world and
+  still cannot do better than 59 %, so this is not a sample-size artefact of the
+  fitted arm — the summary genuinely does not contain the answer.
+- **76.8 → 85.7** (8.9 pp) is what the *extraction* destroys, and this one is
+  uncomfortable: the schema was built to capture the recipe, and it still loses
+  nearly nine points against the raw trajectory. What survives in the digest and
+  not the record is mostly fit-to-task — whether the chat template matches the
+  grader, whether the eval harness was reproduced locally, what was tried and
+  rejected and why.
+- **52.6 → 59.0** (6.4 pp) is the fitted-vs-prior-knowledge gap, and it is the
+  smallest of the three. 540 pairs is thin, but thinness is not what is wrong
+  with the 21 features.
+
+Confidence is usable: `raw` is right 98 % of the 66 pairs it rates 5, and 68 % of
+the 44 it rates 2. No family carries the result — the weakest is
+`claude-opus-4-6` at 73.5 % over 100 pairs, the strongest `claude-opus-4-8` at
+98.1 % over 54. Position bias, the reason for asking every pair twice, turned out
+to be small: `raw` says "A" 51.2 % of the time and contradicts itself on 5.2 % of
+pairs.
+
+**What this does and does not license.** It says the trajectory contains, in
+readable form, most of what separates a good run from a bad one within a cell and
+within an agent family, and that every summary tried so far throws that away. It
+does not say a *predictor* can be built: the arm is a discriminator shown both
+sides, not something that scores one run in isolation, and 86.7 % on pairs
+separated by ≥ 0.05 is not a claim about the 0.05-and-under population the choice
+set actually contains — accuracy there is 79.4 %, against a 50 % floor. The
+honest next step is the reverse direction: rank a whole choice set rather than
+compare two, and the crossed rollout in §"The confound no split can fix" to break
+the agent/recipe confound at the source.
 
 ## Reproducing
 
@@ -518,6 +615,10 @@ python3 mask_probe.py                               # would masking the agent do
 cd ../..                                            # extraction, from the repo root
 python3 tools/extract_recipes.py                    # all 1175, resumable, ~15 min, ~$244
 python3 tools/extract_agree.py                      # cheap tier vs the 143 heavy records
+
+python3 tools/traj_read.py --arms selfreport,features,effort   # free
+python3 tools/traj_read.py --arms summary,recipe,redact,raw    # ~$470, resumable
+python3 tools/traj_read_report.py                              # every cut in the section above
 ```
 
 `run.py` evaluates the shipped split first as a positive control and exits

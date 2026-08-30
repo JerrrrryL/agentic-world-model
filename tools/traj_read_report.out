@@ -1,0 +1,125 @@
+540 pairs, 13 families, 27 cells
+
+      4074 score-shaped numbers over 593 runs; the rule decides 75.6% of pairs and abstains on the rest
+      21 features, 660 one-hot columns, 13 held-out families, 540 pairs predicted
+      4 features, 20 one-hot columns, 13 held-out families, 540 pairs predicted
+      25 features, 680 one-hot columns, 13 held-out families, 540 pairs predicted
+
+=== 1. all 540 pairs (abstain and self-contradiction score 0.5) ===
+         arm     acc            95% CI  answered  consist  says-A
+  selfreport   58.9%  [ 55.2%, 62.5%]     75.6%   100.0%   46.8%
+    features   52.6%  [ 48.3%, 56.9%]    100.0%   100.0%   48.5%
+      effort   43.1%  [ 39.1%, 47.2%]    100.0%   100.0%   28.7%
+ feat+effort   50.6%  [ 46.3%, 54.8%]    100.0%   100.0%   45.7%
+     summary   59.0%  [ 55.1%, 62.8%]     99.8%    87.8%   48.6%
+      recipe   76.8%  [ 73.6%, 79.9%]     97.4%    87.3%   49.3%
+      redact   85.7%  [ 83.0%, 88.4%]    100.0%    93.7%   50.6%
+         raw   86.7%  [ 83.9%, 89.4%]     99.6%    94.8%   51.2%
+
+=== 2. split by whether a score is readable off the page ===
+    the regex finds a comparable number in 408 pairs and nothing in 132
+         arm   regex-decidable       regex-blind   difference
+  selfreport  61.8% [57.1%,66.4%]  50.0% [50.0%,50.0%]   +11.8pp
+    features  53.9% [49.0%,58.8%]  48.5% [40.2%,56.8%]    +5.4pp
+      effort  45.3% [40.4%,50.0%]  36.4% [28.8%,44.7%]    +9.0pp
+ feat+effort  51.2% [46.6%,56.1%]  48.5% [40.2%,56.8%]    +2.7pp
+     summary  60.7% [56.4%,65.0%]  53.8% [45.8%,61.7%]    +6.9pp
+      recipe  77.5% [73.7%,81.0%]  74.6% [68.2%,81.1%]    +2.8pp
+      redact  86.6% [83.6%,89.6%]  83.0% [76.5%,88.6%]    +3.7pp
+         raw  87.9% [84.8%,90.8%]  83.0% [76.5%,88.6%]    +4.9pp
+    (n = 408 and 132)
+
+=== 3. agreement with the self-report rule, on pairs it decides ===
+    features agrees  57.4% of 408 pairs (chance is 50%, and both are ~62% correct there)
+      effort agrees  49.8% of 408 pairs (chance is 50%, and both are ~62% correct there)
+ feat+effort agrees  58.6% of 408 pairs (chance is 50%, and both are ~62% correct there)
+     summary agrees  59.3% of 359 pairs (chance is 50%, and both are ~62% correct there)
+      recipe agrees  60.6% of 350 pairs (chance is 50%, and both are ~62% correct there)
+      redact agrees  63.9% of 379 pairs (chance is 50%, and both are ~62% correct there)
+         raw agrees  63.7% of 383 pairs (chance is 50%, and both are ~62% correct there)
+
+=== 4. paired sign test, same pairs ===
+    selfreport vs features      171 - 135  p=0.0452 *
+    selfreport vs effort        220 - 117  p=0.0000 *
+    selfreport vs feat+effort   174 - 127  p=0.0079 *
+    selfreport vs summary       155 - 154  p=1.0000  
+    selfreport vs recipe         88 - 217  p=0.0000 *
+    selfreport vs redact         52 - 241  p=0.0000 *
+    selfreport vs raw            48 - 243  p=0.0000 *
+      features vs effort        164 - 113  p=0.0026 *
+      features vs feat+effort    38 - 27   p=0.2145  
+      features vs summary       112 - 151  p=0.0189 *
+      features vs recipe         78 - 212  p=0.0000 *
+      features vs redact         35 - 217  p=0.0000 *
+      features vs raw            35 - 220  p=0.0000 *
+        effort vs feat+effort    92 - 132  p=0.0090 *
+        effort vs summary       105 - 191  p=0.0000 *
+        effort vs recipe         68 - 255  p=0.0000 *
+        effort vs redact         34 - 268  p=0.0000 *
+        effort vs raw            36 - 271  p=0.0000 *
+   feat+effort vs summary       110 - 157  p=0.0048 *
+   feat+effort vs recipe         73 - 222  p=0.0000 *
+   feat+effort vs redact         32 - 227  p=0.0000 *
+   feat+effort vs raw            33 - 230  p=0.0000 *
+       summary vs recipe         77 - 190  p=0.0000 *
+       summary vs redact         46 - 211  p=0.0000 *
+       summary vs raw            41 - 215  p=0.0000 *
+        recipe vs redact         35 - 101  p=0.0000 *
+        recipe vs raw            35 - 106  p=0.0000 *
+        redact vs raw            14 - 23   p=0.1877  
+
+=== 5. per family (arms as columns) ===
+                family    n selfreport   features     effort    summary     recipe     redact        raw
+         gpt-5.3-codex  121      68.2%      50.4%      47.9%      53.7%      74.8%      79.3%      81.8%
+       claude-opus-4-6  100      47.5%      49.0%      32.0%      59.0%      70.0%      72.5%      73.5%
+               gpt-5.4   65      66.2%      52.3%      49.2%      62.3%      68.5%      91.5%      92.3%
+       claude-opus-4-8   54      69.4%      55.6%      29.6%      63.9%      88.9%      96.3%      98.1%
+        gemini-3.1-pro   38      52.6%      47.4%      42.1%      46.1%      63.2%      78.9%      76.3%
+       claude-opus-4-7   34      63.2%      61.8%      52.9%      67.6%      80.9%      97.1%      95.6%
+           kismet-0715   32      45.3%      46.9%      43.8%      65.6%      92.2%      96.9%      98.4%
+               gpt-5.5   31      40.3%      51.6%      54.8%      56.5%      90.3%      93.5%      93.5%
+       glm-5.2-preview   28      60.7%      67.9%      42.9%      76.8%      83.9%      91.1%      92.9%
+         claude-opus-5   12      58.3%      58.3%      50.0%      45.8%      91.7%     100.0%     100.0%
+           gpt-5.6-sol   11      68.2%      63.6%      27.3%      54.5%      77.3%      90.9%     100.0%
+        claude-fable-5    7      50.0%      42.9%      57.1%      64.3%      57.1%      78.6%      78.6%
+  Cursor Grok 4.5 High    7      57.1%      57.1%      71.4%      42.9%      78.6%     100.0%      85.7%
+
+=== 6. by accuracy gap ===
+                   gap    n selfreport   features     effort    summary     recipe     redact        raw
+             0.05-0.10  223      52.5%      51.1%      44.8%      56.3%      67.9%      78.0%      79.4%
+             0.10-0.20  168      59.5%      53.0%      41.7%      61.6%      83.0%      87.5%      88.1%
+             0.20-0.40  107      63.1%      53.3%      41.1%      57.5%      79.9%      93.9%      94.9%
+             0.40-1.01   42      79.8%      57.1%      45.2%      66.7%      90.5%      98.8%      98.8%
+
+=== 7. is the model's own confidence worth anything? ===
+     summary 2:189/335=56%  3:96/138=70%
+      recipe 2:24/36=67%  3:211/278=76%  4:128/134=96%  5:11/11=100%
+      redact 2:26/39=67%  3:172/205=84%  4:195/209=93%  5:53/53=100%
+         raw 2:30/44=68%  3:148/180=82%  4:210/220=95%  5:65/66=98%
+
+=== 8. how much score text survived redaction, per arm ===
+    (the exact text each arm was shown, re-run through the same regex; 200 runs)
+      recipe    21 score-shaped numbers, 18/200 runs with at least one
+      redact    47 score-shaped numbers, 32/200 runs with at least one
+         raw   955 score-shaped numbers, 147/200 runs with at least one
+
+=== 9. why the regex abstains on those 132 pairs ===
+      84  only one run printed a score
+      26  both printed, and the maxima tie
+      22  neither run printed a score
+
+    on the 22 pairs where NEITHER side printed a readable score:
+      selfreport  50.0% [50.0%,50.0%]
+        features  59.1% [36.4%,77.3%]
+          effort  31.8% [13.6%,50.0%]
+         summary  52.3% [34.1%,72.7%]
+          recipe  50.0% [31.8%,68.2%]
+          redact  81.8% [63.6%,95.5%]
+             raw  81.8% [63.6%,95.5%]
+
+=== 10. does the stated reason quote a measured SCORE? ===
+    (score-shaped and next to an eval word -- a bare number would also match every learning rate and warmup fraction)
+     summary quotes a number in  0.9% of pairs:  70.0% there,  58.9% on the 535 where it does not
+      recipe quotes a number in 34.8% of pairs:  87.8% there,  70.9% on the 352 where it does not
+      redact quotes a number in 36.3% of pairs:  90.1% there,  83.3% on the 344 where it does not
+         raw quotes a number in 42.2% of pairs:  91.9% there,  82.9% on the 312 where it does not

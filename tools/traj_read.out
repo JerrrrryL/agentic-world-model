@@ -1,0 +1,48 @@
+logs/trajread_summary.log:1175 runs -> 540 pairs (same cell, same agent family, accuracy gap >= 0.05); 13 families, 27 cells
+logs/trajread_summary.log:  gap median 0.124, truth is A in 53.3% of pairs
+logs/trajread_summary.log:
+logs/trajread_summary.log:         arm     n
+logs/trajread_summary.log:      593 texts, median 403 chars, max 485
+logs/trajread_summary.log:      0 calls cached, 1080 to make
+logs/trajread_summary.log:      1080 calls, ~$8.53
+logs/trajread_summary.log:             summary cover 99.8%  self-consistent 87.8%  acc-consistent  60.3% [55.8%,64.6%]  acc-answered  59.0%  acc-pop  59.0%  says-A 48.6%
+logs/trajread_summary.log:               gap     n     acc
+logs/trajread_summary.log:         0.05-0.10   194   57.2%
+logs/trajread_summary.log:         0.10-0.20   143   63.6%
+logs/trajread_summary.log:         0.20-0.40    98   58.2%
+logs/trajread_summary.log:         0.40-1.01    38   68.4%
+logs/trajread_summary.log:
+logs/trajread.log:1175 runs -> 540 pairs (same cell, same agent family, accuracy gap >= 0.05); 13 families, 27 cells
+logs/trajread.log:  gap median 0.124, truth is A in 53.3% of pairs
+logs/trajread.log:
+logs/trajread.log:         arm     n
+logs/trajread.log:      593 texts, median 6,921 chars, max 14,589
+logs/trajread.log:      8 calls cached, 1072 to make
+logs/trajread.log:      1072 calls, ~$40.61
+logs/trajread.log:              recipe cover 97.4%  self-consistent 87.3%  acc-consistent  81.5% [77.7%,84.8%]  acc-answered  77.5%  acc-pop  76.8%  says-A 49.3%
+logs/trajread.log:               gap     n     acc
+logs/trajread.log:         0.05-0.10   192   70.8%
+logs/trajread.log:         0.10-0.20   141   89.4%
+logs/trajread.log:         0.20-0.40    90   85.6%
+logs/trajread.log:         0.40-1.01    36   97.2%
+logs/trajread.log:
+logs/trajread.log:      593 texts, median 39,120 chars, max 102,242
+logs/trajread.log:      8 calls cached, 1072 to make
+logs/trajread.log:      1072 calls, ~$209.12
+logs/trajread.log:              redact cover 100.0%  self-consistent 93.7%  acc-consistent  88.1% [85.0%,90.7%]  acc-answered  85.7%  acc-pop  85.7%  says-A 50.6%
+logs/trajread.log:               gap     n     acc
+logs/trajread.log:         0.05-0.10   201   81.1%
+logs/trajread.log:         0.10-0.20   160   89.4%
+logs/trajread.log:         0.20-0.40   104   95.2%
+logs/trajread.log:         0.40-1.01    41  100.0%
+logs/trajread.log:
+logs/trajread.log:      593 texts, median 39,098 chars, max 102,068
+logs/trajread.log:      0 calls cached, 1080 to make
+logs/trajread.log:      1080 calls, ~$210.83
+logs/trajread.log:                 raw cover 99.6%  self-consistent 94.8%  acc-consistent  88.8% [85.8%,91.3%]  acc-answered  86.8%  acc-pop  86.7%  says-A 51.3%
+logs/trajread.log:               gap     n     acc
+logs/trajread.log:         0.05-0.10   203   82.3%
+logs/trajread.log:         0.10-0.20   162   89.5%
+logs/trajread.log:         0.20-0.40   104   96.2%
+logs/trajread.log:         0.40-1.01    41  100.0%
+logs/trajread.log:
