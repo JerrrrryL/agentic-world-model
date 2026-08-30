@@ -702,9 +702,77 @@ executed by the same agent, so "the recipe predicts the score" and "the agent
 predicts both" remain observationally identical here. Only the crossed rollout in
 §"The confound no split can fix" separates them.
 
+## Crossing the confound: a deterministic recipe executor
+
+`rollout/agents/hv_recipe/solve.sh` is the executor half of the crossing in §"The
+confound no split can fix". There is no LLM anywhere in it: one script, six
+recipes, everything else held fixed. Which half of a run is "the recipe" is not a
+judgement call — it is read off the extraction schema.
+
+| VARIES — what `tools/extract_recipes.py` recorded | FIXED — what it never captured |
+|---|---|
+| datasets, subsets, caps, repeats | learning rate and schedule, precision |
+| epochs, nominal batch size | sequence length, target format, EOS handling |
+| | which checkpoint ships, decode settings |
+
+`learning_rate` is `None` on **all 24** SFT-only runs of the gsm8k ×
+Qwen3-1.7B-Base cell, which is why it sits in the FIXED column: nothing was
+recorded to vary. That column is also, precisely, where the agents differed
+invisibly.
+
+The six recipes span the cell, 0.733 down to 0.042. The two ends are the point:
+**the 0.733 run and the 0.042 run have essentially the same recipe on paper.** So
+the 0.69 gap lives somewhere the extraction never looked, and the null here — that
+under a fixed executor the spread collapses — is a live outcome rather than a
+strawman. Two seeds per recipe, because a single-seed contrast in this cell would
+be uninterpretable against seed noise, plus an untrained control (`hv_noop`) so a
+collapsed spread can be told apart from a trainer that trains nothing.
+
+Submitted as two 7-cell packs on two exclusive a3 nodes (jobs 84279, 84280),
+seeds alternating within a node and swapping between them, node B's order rotated
+so no recipe lands on the same card index twice.
+
+### Three defects the CPU dry run caught before any GPU time
+
+Each would have produced a clean-looking wrong answer, and two of them would have
+produced *my own hypothesis' null*:
+
+- **`MAX_LEN` was 1024; the eval's own 10-shot system message is 1715 tokens.**
+  100 % of rows truncated, and under `completion_only_loss` it is the completion
+  that goes — so every row carries zero loss tokens, every arm scores the base
+  model's floor, and the run still exits 0. Measured p50 1929 / max 2551 across
+  both sources; `MAX_LEN` is now 2560 (0.00 % truncated) and a runtime guard fails
+  the run above 2 %.
+- **Targets ended in `tok.eos_token`.** On a *Base* checkpoint that is
+  `<|endoftext|>`, while the template — and therefore vLLM at grading — stops on
+  `<|im_end|>`. Train on the wrong one and the model never emits a stop token and
+  buries its answer in the tail. The terminator is now read from the template.
+- **The template was unreachable.** `src/eval/tasks/gsm8k/evaluate.py` hands vLLM
+  `templates/qwen3.jinja`, but that lives at `src/eval/templates/` and
+  `run_task.sh` copies only `solve.sh` into the sandbox. The fallback was whatever
+  the tokenizer happened to ship. It is now embedded byte-for-byte and
+  hash-checked, so training and grading render the same string.
+
+A target-format assertion ships alongside them: MetaMathQA bodies carry gsm8k's
+own `#### 752` line, which teaches a second answer format that the grader then
+reads instead of the intended one.
+
+### The other half is blocked, not descoped
+
+The crossing has two halves. This is the one that varies the recipe under a fixed
+executor. The other — **the same recipe executed by different agents** — needs
+agent credentials inside the PTB container, and the live `.env` carries none: only
+`POST_TRAIN_BENCH_*` infra variables and `HF_HOME`. That half is blocked on
+credentials or Vertex plumbing, not on design, and nothing below should be read as
+covering it.
+
 ## Reproducing
 
 ```bash
+bash rollout/setup.sh                   # pinned private PTB checkout + both agents
+sbatch rollout/hv_pack.sbatch r733.s0 r699.s1 r600.s0 r544.s1 r401.s0 r042.s1 base
+sbatch rollout/hv_pack.sbatch r042.s0 r401.s1 r544.s0 r600.s1 r699.s0 r733.s1 base
+
 pip install scikit-learn                # ceiling.py only; the battery needs nothing extra
 cd tools/splitdx
 python3 run.py designs/owner.py designs/owner2.py   # per-design detail
