@@ -1,0 +1,63 @@
+control reproduces; the numbers below are comparable to the rest of the battery
+
+=== 1. stderr = sqrt(accuracy*(1-accuracy)/n): solving for the item count n ===
+         benchmark   rows  implied n  rel. spread  max acc  rho(stderr,acc)
+          aime2025     95       29.0     8.58e-16   0.3000          +0.9995  <-- all below p=0.5: monotone, so ranking by stderr is EXACT
+  arenahardwriting    178     1101.0     7.51e-01   0.8624          +0.9571
+          gpqamain    167      447.0     1.02e-15   0.3973          +0.9999  <-- all below p=0.5: monotone, so ranking by stderr is EXACT
+             gsm8k    193     1318.0     1.04e-15   0.9121          -0.3198
+       healthbench    149      375.0     1.58e+00   0.5667          +0.5111
+         humaneval    171      163.0     1.39e-15   0.8537          +0.3553
+
+  953/1175 rows carry a stderr. A constant implied n means the column is
+  a deterministic function of the label, not an independent measurement of it.
+
+=== 2. cost under the recommended 5-fold split (top-3 regret, lower is better) ===
+ fold  n_test  cover  honest@3  stderr@3  hybrid@3  benchmarks where stderr won on train
+------------------------------------------------------------------------------------------------------------
+    0     235   89%    0.0231    0.0695    0.0221  aime2025, arenahardwriting, gpqamain
+    1     234   94%    0.0469    0.0390    0.0418  aime2025, gpqamain
+    2     237   88%    0.0444    0.0454    0.0368  aime2025, arenahardwriting, gpqamain
+    3     234   90%    0.0259    0.0137    0.0159  aime2025, arenahardwriting, gpqamain
+    4     235   89%    0.0272    0.0263    0.0204  aime2025, arenahardwriting, gpqamain
+ POOL    1175           0.0335    0.0388    0.0274
+
+  per benchmark, ranking by stderr alone, pooled over folds:
+    aime2025           regret@3 = 0.0000   <-- EXACT, the benchmark is solved
+    arenahardwriting   regret@3 = 0.0516
+    bfcl               regret@3 = 0.0480
+    gpqamain           regret@3 = 0.0000   <-- EXACT, the benchmark is solved
+    gsm8k              regret@3 = 0.0574
+    healthbench        regret@3 = 0.0295
+    humaneval          regret@3 = 0.0849
+
+=== 3. every post-hoc column as a ranker, pooled over the 5 folds ===
+          column  cover  regret@3  vs honest    verdict
+------------------------------------------------------------
+   (honest best)           0.0335             the bar to beat
+          stderr   90%    0.0388    +0.0053    no help
+  total_cost_usd  100%    0.0378    +0.0043    no help
+       num_turns  100%    0.0269    -0.0067      LEAKS
+     duration_ms  100%    0.0475    +0.0139    no help
+      time_taken  100%    0.0462    +0.0127    no help
+   session_count  100%    0.0691    +0.0356    no help
+
+=== 4. all six at once: best of {honest, 6 columns} chosen per benchmark on train ===
+ fold  honest@3  attacked@3   column chosen per benchmark
+------------------------------------------------------------------------------------------------------------
+    0    0.0231      0.0000   aime20=stderr, arenah=stderr, bfcl=num_turns, gpqama=stderr, gsm8k=time_taken, health=duration_ms, humane=total_cost_usd
+    1    0.0469      0.0333   aime20=stderr, arenah=total_cost_usd, gpqama=stderr, gsm8k=time_taken, humane=total_cost_usd
+    2    0.0444      0.0424   aime20=stderr, arenah=stderr, bfcl=num_turns, gpqama=stderr, gsm8k=total_cost_usd, health=duration_ms, humane=total_cost_usd
+    3    0.0259      0.0306   aime20=stderr, arenah=stderr, bfcl=num_turns, gpqama=stderr, gsm8k=time_taken, health=duration_ms, humane=total_cost_usd
+    4    0.0272      0.0280   aime20=stderr, arenah=num_turns, bfcl=total_cost_usd, gpqama=stderr, gsm8k=num_turns, health=duration_ms, humane=total_cost_usd
+ POOL    0.0335      0.0269
+
+  honest best baseline    regret@3 = 0.0335   headroom +0.0317
+  stderr alone                     = 0.0388
+  stderr, chosen per benchmark     = 0.0274   headroom +0.0256   (19% destroyed)
+  every post-hoc column            = 0.0269   headroom +0.0251   (21% destroyed)
+
+  A split spec that does not name an excluded-columns list is measuring this
+  attack, not the thesis. The design survives it -- +0.0251 of headroom
+  is still positive -- but the honest headline drops from +0.0317 to +0.0251,
+  and on 2 of 7 benchmarks stderr alone is an exact oracle.

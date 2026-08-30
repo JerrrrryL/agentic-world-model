@@ -171,6 +171,9 @@ instead of a degree of freedom.
 * **Choice set** — the (benchmark, base model) cell. 28 sets, median 8–9, no
   singletons, median 6 distinct configurations per set — the candidates are
   genuinely different recipes, not replicates of one.
+* **Excluded columns** — `stderr`, `num_turns`, `total_cost_usd`, `duration_ms`,
+  `time_taken`, `session_count`. All six are written after the run finishes and
+  two of them beat the honest baseline; see the next section for the measurement.
 
 `tools/splitdx/kfold.out`:
 
@@ -204,6 +207,72 @@ the configuration a trajectory-reading model needs in order to be attributable.
 
 **Cost:** free. No new runs; a re-partition of the 1,175 already in the
 catalogue.
+
+## The clause every design above is missing: excluded columns
+
+A split decides *which rows* a model may learn from. None of the 17 designs
+above — including the recommended one — says anything about *which columns* it
+may read, and the PostTrainBench catalogue row is written **after** the run
+finishes. Six of its fields are post-execution facts, and one of them is the
+label in disguise.
+
+`stderr` is not correlated with the label; it *is* the label:
+
+```
+stderr = sqrt(accuracy * (1 - accuracy) / n)
+```
+
+with `n` the benchmark's item count. Solving `n` back out returns a constant to
+machine precision — aime2025 **29**, gpqamain **447**, gsm8k **1318**,
+humaneval **163** (relative spread ~1e-15; arenahardwriting and healthbench are
+not fixed-`n` and spread 0.75 / 1.58). Below p = 0.5 the map is strictly
+increasing, so on any benchmark whose accuracies all sit under 0.5 — aime2025
+(max 0.3000) and gpqamain (max 0.3973) — ranking by `stderr` is an **exact**
+oracle: Spearman +0.9995 and +0.9999, regret@3 **0.0000**.
+
+That is a fact about the column. The number that matters is what it costs the
+recommended design, priced the way an attacker actually gets it — choosing per
+benchmark, **on train only**, whichever ranker looks best:
+
+| ranker | regret@3 | headroom over the 0.0018 floor | headroom destroyed |
+|---|---:|---:|---:|
+| best parameter-free lookup (the honest bar) | 0.0335 | **+0.0317** | — |
+| `stderr` alone, pooled | 0.0388 | +0.0370 | none — *it looks harmless* |
+| `stderr`, chosen per benchmark on train | 0.0274 | +0.0256 | **19 %** |
+| all six post-hoc columns, chosen per benchmark | 0.0269 | +0.0251 | **21 %** |
+
+The second row is why this nearly went unnoticed. Pooled over seven benchmarks
+`stderr` scores *worse* than the honest lookup, because the average mixes two
+benchmarks it solves exactly with five it is bad at. A single pooled number
+declares the column safe. Measuring per benchmark, and then letting the attacker
+pick per benchmark the way any real one would, reverses the verdict.
+
+Every column, alone, against the 0.0335 bar (`tools/splitdx/stderr_leak.out`):
+
+| column | coverage | regret@3 | vs honest | |
+|---|---:|---:|---:|---|
+| `num_turns` | 100 % | **0.0269** | −0.0067 | **leaks on its own** |
+| `stderr` | 90 % | 0.0388 | +0.0053 | leaks *per benchmark*, see above |
+| `total_cost_usd` | 100 % | 0.0378 | +0.0043 | no help alone |
+| `time_taken` | 100 % | 0.0462 | +0.0127 | no help alone |
+| `duration_ms` | 100 % | 0.0475 | +0.0139 | no help alone |
+| `session_count` | 100 % | 0.0691 | +0.0356 | no help alone |
+
+`num_turns` beats the honest lookup outright, pooled, with no per-benchmark
+selection at all — a longer session is a harder task badly handled.
+
+**So any split that ships must carry an excluded-columns list**, and it must
+exclude all six, not only the two that leak today. The four that "do not help
+alone" are still post-execution facts: they cost nothing to exclude, they are
+selected into the full attack in every fold above, and whether they help is a
+property of this corpus rather than of the design.
+
+**How bad is this?** Not fatal, and it should not be overstated. The design
+survives — +0.0251 of headroom is still positive under the worst attack — but
+the honest headline drops from +0.0317 to +0.0251, and on **2 of 7 benchmarks**
+the benchmark is simply solved. The correct claim is "the excluded-columns
+clause is load-bearing and worth a fifth of the headroom", not "the whole
+benchmark is a lookup on `sqrt(p(1-p)/n)`".
 
 ## The blocker this exposed, which is bigger than the split
 
@@ -261,7 +330,8 @@ concrete next step rather than a hedge:
    coarse version shows nothing.
 
 **So the order of work is:** run the recipe extraction over all 1,175 runs, redo
-pass 3 at full power, and only then commit a split. Committing the 5-fold design
+pass 3 at full power, and only then commit a split — with the excluded-columns
+clause in the spec file, not in this document. Committing the 5-fold design
 first would be committing a well-built measuring instrument before knowing there
 is anything to measure.
 
@@ -273,7 +343,8 @@ cd tools/splitdx
 python3 run.py designs/owner.py designs/owner2.py   # per-design detail
 python3 compare.py                                  # the ranking table
 python3 kfold.py                                    # the recommended design
-python3 -c "..."                                    # see recipe_signal.out for the content probe
+python3 recipe_signal.py                            # is there anything in the recipe?
+python3 stderr_leak.py                              # which columns are the label in disguise
 ```
 
 `run.py` evaluates the shipped split first as a positive control and exits
