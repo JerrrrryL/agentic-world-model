@@ -1,0 +1,49 @@
+1175 runs, 28 agent_model, 26 agent families
+
+=== 1. can the agent be recovered from a column the mask leaves behind? ===
+          column  levels   purity   single-agent groups  verdict
+------------------------------------------------------------------------------------
+      experiment      58   100.0%         58/58         IS agent identity
+        run_name    1175   100.0%       1175/1175       IS agent identity
+    trace_format       4    32.3%          1/4          weak
+       benchmark       7    13.6%          0/7          weak
+   trained_model       4    13.4%          0/4          weak
+
+=== 2. shipped split: every parameter-free lookup, with and without a mask ===
+            baseline                               keys  regret@3      rho
+------------------------------------------------------------------------------
+         global-mean                             (none)    0.1543     +nan
+           per-agent                        agent_model    0.0000  +0.7507  masked away
+    per-agent-family                       agent_family    0.0000  +0.7514  masked away
+ per-agent×benchmark              agent_model+benchmark    0.0000  +0.7507  masked away
+      per-agent×cell agent_model+benchmark+trained_model    0.1543     +nan  masked away
+      per-experiment                         experiment    0.0000  +0.7080
+          per-format                       trace_format    0.0844  +0.4029
+
+  best lookup that reads no agent column: per-experiment -> regret@3 0.0000, rho +0.7080
+  48/50 test rows share an experiment with train, and every experiment is one agent, so the
+  saturating lookup survives the mask unchanged. Masking is not a substitute
+  for holding the family out -- and `experiment` and `run_name` belong on the
+  excluded-columns list next to the post-execution fields.
+
+=== 3. the confound no split and no mask can fix ===
+  58 experiments, all single-agent: 'which agent' and 'which recipe'
+  are the same variable in 1175/1175 rows. The corpus is nested,
+  not crossed. Only new rollouts that cross the two separate them.
+
+  Incidental crossing that already exists, on the 143 extracted recipes:
+  12/49 pipeline signatures were produced by more than one agent family.
+
+                pipeline signature  agents  acc spread
+                               sft      19      0.8036
+                         sft>merge       9      0.6679
+                           sft>sft       7      0.4261
+                       sft>package       7      0.6027
+                       sft>sft>sft       4      0.1941
+                           rft>sft       3      0.2244
+                          sft>grpo       3      0.2919
+                     sft>grpo>grpo       3      0.0743
+
+  The algorithm family is nearly uninformative: 19 agents ran plain `sft` and
+  landed 0.80 of accuracy apart. Whatever signal exists is in the detail the
+  extraction currently discards, or in execution quality.

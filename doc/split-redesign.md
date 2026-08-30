@@ -274,6 +274,71 @@ the benchmark is simply solved. The correct claim is "the excluded-columns
 clause is load-bearing and worth a fifth of the headroom", not "the whole
 benchmark is a lookup on `sqrt(p(1-p)/n)`".
 
+### Why masking the agent is not a substitute for holding it out
+
+The obvious cheaper fix for §1 is to leave the split alone and simply delete
+`agent_model` from the input. Measured on the shipped split, it changes nothing:
+
+| lookup | keys | regret@3 | |
+|---|---|---:|---|
+| per-agent | `agent_model` | 0.0000 | masked away |
+| per-agent-family | `agent_family` | 0.0000 | masked away |
+| **per-experiment** | `experiment` | **0.0000** | **survives masking** |
+| per-format | `trace_format` | 0.0844 | survives masking |
+| global-mean | — | 0.1543 | |
+
+`experiment` recovers the agent **100 %** of the time — all 58 experiments are
+single-agent, as is every one of the 1,175 `run_name`s — and 48 of the 50 test
+rows share an experiment with a train row. So the saturating lookup is still
+there after masking, at exactly regret@3 = 0.0000, keyed on a different column.
+
+Masking is also the weaker guarantee in principle. Holding out a family makes
+the exploit *structurally impossible*: there is no train row with that agent to
+look up, so a model that identifies the agent perfectly from the trajectory
+gains nothing. Masking only makes it *inconvenient*: the row is still in train,
+and the trajectory carries the agent's house style whether or not the name field
+is present — re-identification is exactly the sort of thing the model under test
+is good at. An honour-system constraint on a benchmark whose whole purpose is to
+be attacked is not a constraint.
+
+**The two compose, and both are needed.** Hold out families (structural), *and*
+list the columns nobody may read (procedural) — and that list has to include
+`experiment` and `run_name` alongside the six post-execution fields, because
+they are agent identity under another name.
+
+## The confound no split can fix
+
+Worth stating plainly, because it bounds everything above: **all 58 experiments
+are single-agent.** "Which agent produced this run" and "which recipe this run
+followed" are the same variable in 1,175 of 1,175 rows. The corpus is fully
+nested, not crossed.
+
+No choice of split and no masking separates a nested pair — they are one column
+wearing two labels. Only new rollouts that deliberately cross the two can: the
+**same recipe executed by different agents**, and **different recipes executed
+by the same agent**. Until then, any result of the form "the trajectory predicts
+the outcome" is indistinguishable from "the agent predicts the outcome", which
+§1 already showed is worth 66 % of the variance.
+
+There is one hint that the crossing is worth paying for. At the coarse level the
+extraction already captures, some pipeline signatures *are* shared across
+agents — and they do not behave like one recipe:
+
+| pipeline signature | distinct agent families | accuracy spread |
+|---|---:|---:|
+| `sft` | 19 | **0.8036** |
+| `sft>merge` | 9 | 0.6679 |
+| `sft>package` | 7 | 0.6027 |
+| `sft>sft` | 7 | 0.4261 |
+| `sft>sft>sft` | 4 | 0.1941 |
+
+Nineteen different agents ran plain `sft` and landed 0.80 of accuracy apart. So
+the algorithm family — the level the extraction currently resolves — carries
+almost nothing; whatever signal exists is in the detail it discards (data mix,
+dataset choice, LR, epochs) or in execution quality. That is a second reason the
+extraction has to be re-run before a split is committed, and a first reason to
+believe a crossed rollout would actually resolve something.
+
 ## The blocker this exposed, which is bigger than the split
 
 A better split is necessary and not sufficient. The split diagnostics show
