@@ -91,6 +91,16 @@ class TestEveryRowIsCheckable:
         ]
         assert lying == []
 
+    def test_every_problem_carries_the_same_four_keys(self, rows) -> None:
+        """``lens`` is absent from a problem found by a single-verifier round, and
+        absent is spelled ``null`` everywhere else in this file. A key that simply
+        disappears on half the entries makes the reader guess which half, and
+        hands a columnar loader a different struct on different rows."""
+        shapes = {
+            tuple(sorted(p)) for r in rows for p in r["extraction"]["problems"]
+        }
+        assert shapes == {("field", "issue", "lens", "severity")}
+
     def test_flagged_rows_carry_the_problem_they_are_flagged_for(self, rows) -> None:
         """``flagged`` is the exclusion signal. A row flagged with nothing worse
         than a minor note would push a usable recipe out of everyone's filter."""
