@@ -1,0 +1,28 @@
+5 folds over 26 agent families, 1175 runs
+  fold 0:  235 runs,  4 families  claude-opus-5, gpt-5.1-codex-max, gpt-5.3-codex, kimi-k2.5
+  fold 1:  234 runs,  5 families  claude-opus-4-6, gemini-3-pro, glm-5, gpt-5.2, kismet-0715
+  fold 2:  237 runs,  6 families  claude-fable-5, claude-opus-4-7, claude-opus-4-8, claude-sonnet-4-6, glm-4.7-free, qwen3-max-2026-01-23
+  fold 3:  234 runs,  6 families  Cursor Grok 4.5 High, claude-opus-4-5, gemini-3.1-pro, gpt-5.4, kimi-k2-thinking, kimi-k2.6
+  fold 4:  235 runs,  5 families  glm-5.2-preview, gpt-5.5, gpt-5.6-sol, minimax-m2.1-free, minimax-m2.5-free
+
+=== target: absolute ===
+ fold  n_test  sets  med  dumb@3            which  floor@3  gbdt@3     rho      win   win%
+    0     235    28    8  0.0231       per-format   0.0004  0.1291  +0.413  +0.0227   5.0%
+    1     234    28    8  0.0469       per-format   0.0012  0.0565  +0.796  +0.0457  12.1%
+    2     237    28    9  0.0444       per-format   0.0019  0.0446  +0.747  +0.0425  11.2%
+    3     234    28    9  0.0259       per-format   0.0028  0.0415  +0.668  +0.0231   6.3%
+    4     235    28    9  0.0272       per-format   0.0028  0.0377  +0.830  +0.0244   7.6%
+ POOL    1175             0.0335                    0.0018  0.0619  +0.691  +0.0317   8.5%
+      fold spread of winnable share: 5.0% - 12.1%   (sd 2.8 pts)   all positive: True
+      metadata GBDT beats the dumb lookup in 0/5 folds
+
+=== target: delta-vs-cell ===
+ fold  n_test  sets  med  dumb@3            which  floor@3  gbdt@3     rho      win   win%
+    0     235    28    8  0.0231       per-format   0.0004  0.1239  +0.247  +0.0227   5.0%
+    1     234    28    8  0.0469       per-format   0.0012  0.0616  +0.111  +0.0457  12.1%
+    2     237    28    9  0.0444       per-format   0.0019  0.0454  +0.150  +0.0425  11.2%
+    3     234    28    9  0.0259       per-format   0.0028  0.0426  +0.221  +0.0231   6.3%
+    4     235    28    9  0.0272       per-format   0.0028  0.0380  -0.083  +0.0244   7.6%
+ POOL    1175             0.0335                    0.0018  0.0623  +0.129  +0.0317   8.5%
+      fold spread of winnable share: 5.0% - 12.1%   (sd 2.8 pts)   all positive: True
+      metadata GBDT beats the dumb lookup in 0/5 folds

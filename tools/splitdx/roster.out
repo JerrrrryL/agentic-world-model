@@ -1,0 +1,21 @@
+ dumb@3  floor@3  winnable   win%  n_test  sets  med  fams  roster
+----------------------------------------------------------------------------------------------------------------------
+ 0.0619   0.0021   +0.0598  13.8%     297    28   11     3  OWNER-13 rule (2nd-largest down to 25%): claude-opus-4-6,claude-opus-4-8,gpt-5.4
+ 0.0605   0.0026   +0.0579  11.4%     373    28   13     9  hash-0: claude-opus-4-5,claude-opus-4-6,claude-opus-5,gemini-3.1-pro,glm-4.7-f
+ 0.0538   0.0031   +0.0507  14.5%     260    28    9     7  hash-2: Cursor Grok 4.5 High,claude-opus-4-6,gemini-3-pro,gemini-3.1-pro,glm-4
+ 0.0711   0.0021   +0.0690  17.3%     264    28    9     5  hash-6: claude-opus-4-6,claude-opus-5,claude-sonnet-4-6,glm-5,glm-5.2-preview
+ 0.0380   0.0023   +0.0357   7.1%     280    28   10     8  hash-7: claude-fable-5,claude-opus-4-5,claude-opus-4-7,claude-opus-4-8,gpt-5.1
+ 0.0354   0.0040   +0.0314   7.1%     308    28   11     8  hash-9: claude-opus-4-5,claude-opus-4-8,gemini-3-pro,gemini-3.1-pro,glm-5.2-pr
+ 0.0673   0.0025   +0.0648  14.5%     325    28   12     7  hash-10: Cursor Grok 4.5 High,claude-opus-4-6,claude-opus-5,gemini-3-pro,glm-5,
+ 0.0283   0.0030   +0.0253   5.0%     310    28   11     8  hash-11: claude-opus-4-5,claude-opus-4-8,claude-opus-5,gemini-3-pro,gpt-5.1-cod
+ 0.0104   0.0021   +0.0083   1.7%     250    28    9     9  hash-12: claude-opus-5,gemini-3-pro,glm-5,gpt-5.1-codex-max,gpt-5.4,kimi-k2.5,k
+ 0.0192   0.0012   +0.0180   3.7%     348    28   12     6  hash-13: Cursor Grok 4.5 High,claude-fable-5,claude-opus-4-8,glm-4.7-free,gpt-5
+ 0.0228   0.0026   +0.0202   4.2%     316    28   11     9  hash-15: claude-sonnet-4-6,gemini-3-pro,gemini-3.1-pro,glm-4.7-free,gpt-5.4,kim
+ 0.0218   0.0037   +0.0181   4.3%     284    28   11     7  hash-17: gemini-3-pro,glm-4.7-free,glm-5.2-preview,gpt-5.2,gpt-5.4,gpt-5.5,kimi
+ 0.0654   0.0029   +0.0625  15.2%     371    28   14     9  hash-18: claude-opus-4-5,claude-opus-4-6,claude-opus-4-8,claude-opus-5,gpt-5.2,
+
+13 rosters under one rule:
+  dumb regret@3   median 0.0380   range 0.0104-0.0711
+  winnable        median 0.0357   range 0.0083-0.0690
+  winnable share  median 7.1%  range 1.7%-17.3%
+  every roster positive? True

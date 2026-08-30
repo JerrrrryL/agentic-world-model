@@ -1,0 +1,36 @@
+  win%  winnable  dumb@3  floor@3  gbdt@3  n_test   lab  sets  med  1s  lk_ag  lk_fam  lk_exp  design
+-----------------------------------------------------------------------------------------------------
+ 13.8%   +0.0598  0.0619   0.0021  0.0865     297   297    28   11   0     0%      0%      0%  OWNER-12  ALL benchmarks, hold agent families ≈25% of mass, absolute
+       dumb baseline = per-format         within-set spread 0.4349   gbdt rho +0.753   explainable 99% (102 replicate groups)
+ 13.8%   +0.0598  0.0619   0.0021  0.1457     297   297    28   11   0     0%      0%      0%  OWNER-13  ALL benchmarks, hold agent families ≈25% of mass, Δ vs cell
+       dumb baseline = per-format         within-set spread 0.4349   gbdt rho -0.021   explainable 97% (102 replicate groups)
+  9.9%   +0.0545  0.0593   0.0048  0.0894     614   614    28   23   0    35%     35%      0%  OWNER-16  ALL benchmarks, blocked by configuration (50%), Δ vs cell
+       dumb baseline = per-format         within-set spread 0.5513   gbdt rho -0.052   explainable 97% (219 replicate groups)
+  8.9%   +0.0397  0.0447   0.0050  0.0749     103   103     7   14   0    50%     64%      0%  OWNER-14  blocked by configuration AND base model (gemma), absolute
+       dumb baseline = per-format         within-set spread 0.4447   gbdt rho +0.792   explainable 99% (32 replicate groups)
+  8.8%   +0.0511  0.0669   0.0158  0.0766      63    63     4   15   0     0%      0%      0%  OWNER-2  gsm8k, hold out 3 LARGEST agent families
+       dumb baseline = per-format         within-set spread 0.5807   gbdt rho +0.470   explainable 73% (20 replicate groups)
+  7.8%   +0.0470  0.0478   0.0008  0.0642      59    59     4   14   0    32%     51%      0%  OWNER-3  gsm8k, blocked by configuration (30%)
+       dumb baseline = per-format         within-set spread 0.6050   gbdt rho +0.557   explainable 98% (19 replicate groups)
+  6.1%   +0.0304  0.0386   0.0082  0.0179     305   305     7   44   0   100%    100%     97%  OWNER-7  all benchmarks, hold out gemma (the shipped rule, widened)
+       dumb baseline = per-agent×benchmark within-set spread 0.5015   gbdt rho +0.844   explainable 98% (94 replicate groups)
+  6.0%   +0.0373  0.0405   0.0032  0.0774     113   113     8   14   0    35%     47%      0%  OWNER-15  verifiable benchmarks, blocked by configuration, Δ vs cell
+       dumb baseline = per-format         within-set spread 0.6211   gbdt rho +0.310   explainable 93% (35 replicate groups)
+  5.2%   +0.0280  0.0298   0.0018  0.0599     392   392    28   14   0    64%     64%      0%  OWNER-10  ALL benchmarks, blocked by configuration (30%), absolute
+       dumb baseline = per-format         within-set spread 0.5432   gbdt rho +0.683   explainable 99% (127 replicate groups)
+  5.2%   +0.0280  0.0298   0.0018  0.0502     392   392    28   14   0    64%     64%      0%  OWNER-11  ALL benchmarks, blocked by configuration (30%), Δ vs cell
+       dumb baseline = per-format         within-set spread 0.5432   gbdt rho +0.560   explainable 99% (127 replicate groups)
+ -1.3%   -0.0083  0.0061   0.0144  0.0083     172   172     4   43   0   100%    100%    100%  OWNER-8  hold out humaneval entirely (cross-benchmark transfer)
+       dumb baseline = per-experiment     within-set spread 0.6463   gbdt rho +0.766   explainable 94% (53 replicate groups)
+ -3.3%   -0.0245  0.0000   0.0245  0.0634      50    50     1   50   0    98%     98%     96%  CONTROL — shipped gsm8k-gemma-holdout-v1
+       dumb baseline = per-agent          within-set spread 0.7430   gbdt rho +0.689   explainable 81% (16 replicate groups)
+    --      +nan  0.0000      nan     nan       7     7     4    2   1     0%      0%      0%  OWNER-1  gsm8k, hold out 6 smallest agent families
+       dumb baseline = global-mean        within-set spread 0.1521   gbdt rho +nan   explainable nan% (0 replicate groups)
+    --                                         50     0                           OWNER-4  SHIPPED split, but target = Δ vs cell median
+       !! UNDEFINED — no test row has a label under this target
+    --      +nan  0.0000      nan  0.0000      39    39    24    1  13     0%      0%      0%  OWNER-5  all 7 benchmarks, hold out 6 smallest agent families, Δ vs cell
+       dumb baseline = global-mean        within-set spread 0.1945   gbdt rho +0.389   explainable nan% (0 replicate groups)
+    --      +nan  0.0000      nan  0.0000      14    14     7    2   2     0%      0%      0%  OWNER-6  verifiable benchmarks only, hold agent families, Δ vs cell
+       dumb baseline = global-mean        within-set spread 0.1905   gbdt rho +0.668   explainable nan% (0 replicate groups)
+    --      +nan  0.0000      nan     nan       7     7     6    1   5     0%      0%      0%  OWNER-9  gsm8k, hold agent families, pick within configuration
+       dumb baseline = global-mean        within-set spread 0.0326   gbdt rho +nan   explainable nan% (0 replicate groups)
