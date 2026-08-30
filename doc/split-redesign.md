@@ -205,11 +205,65 @@ the configuration a trajectory-reading model needs in order to be attributable.
 **Cost:** free. No new runs; a re-partition of the 1,175 already in the
 catalogue.
 
-**Open, not yet measured:** whether recipe-level features actually vary within a
-choice set. `splits/posttrainbench/gsm8k-gemma-holdout-v1.recipes.jsonl` covers
-only the 143 gsm8k train rows, so the recipe extraction has to be run over the
-full corpus before "the trajectory has something the metadata does not" is a
-measured claim rather than a plausible one.
+## The blocker this exposed, which is bigger than the split
+
+A better split is necessary and not sufficient. The split diagnostics show
+metadata is not *sufficient* to predict the outcome; the thesis needs the
+stronger claim that trajectory content is *available* — that a model reading the
+recipe knows something the catalogue row does not.
+
+Measured on the only rows where recipes exist today (`recipe_signal.out`, the 143
+gsm8k train rows of the shipped split, 3 cells, 24 agent families):
+
+**Pass 1** ranked the recipe top: `dataset_names` R² 0.7917 against the best
+metadata feature's 0.7029.
+
+**Pass 2** killed that. `dataset_names` has 107 levels over 143 rows — it is
+nearly a row identifier, and a one-way R² on a near-unique categorical is high
+whatever the labels are. Against a within-cell permutation null it scores
+**+0.0409 excess, z = +0.9** — nothing. Ranking features of different cardinality
+by raw R² measures cardinality. Corrected, the honest ordering is `agent_family`
++0.5392 (z +13.1), then `n_inference_tricks` +0.4555 (z +23.8) and `n_datasets`
++0.4409 (z +15.8).
+
+**Pass 3** is the one that matters, because the recommended split removes agent
+identity from train — so the question is not "does the agent predict the score"
+but "does the recipe predict it *once the agent is known*". Residualising the
+within-cell Δ on `agent_family` and re-testing against a within-family
+permutation null:
+
+| feature | levels | R² | null | excess | z |
+|---|---:|---:|---:|---:|---:|
+| `n_datasets` | 9 | 0.0773 | 0.0396 | +0.0377 | +1.8 |
+| `n_stages` | 9 | 0.0521 | 0.0341 | +0.0180 | +1.1 |
+| `dataset_kinds` | 9 | 0.0599 | 0.0430 | +0.0170 | +0.9 |
+| `uses_rl` | 2 | 0.0048 | 0.0016 | +0.0032 | +1.4 |
+| `pipeline_signature` | 49 | 0.2090 | 0.1959 | +0.0131 | +0.3 |
+| `n_discarded` | 14 | 0.0978 | 0.0889 | +0.0088 | +0.3 |
+| `n_inference_tricks` | 6 | 0.0172 | 0.0204 | −0.0032 | −0.2 |
+
+**0 of 7 survive.** On this slice every recipe feature collapses to the agent's
+house style: which agent wrote the recipe explains what the recipe contains
+explains the score, and the middle term adds nothing of its own.
+
+This is not yet a verdict on the thesis, for three reasons, and each is a
+concrete next step rather than a hedge:
+
+1. **Power.** Conditioning on 24 families inside 143 rows leaves a residual
+   holding 30 % of the within-cell variance. `n_datasets` at z = +1.8 is
+   suggestive and unresolvable at this n; reaching z = 3 needs roughly (3/1.8)²
+   ≈ 2.8× the rows, i.e. ~400. The full corpus has **1,175**, so this *is*
+   resolvable — but only after the extraction is run beyond gsm8k.
+2. **Coverage.** One benchmark, and the train side of the split being replaced.
+3. **Feature coarseness.** These are seven summary counts derived from the
+   extraction, not the recipe text. A model reading the trajectory has more to
+   work with — but "more to work with" has to be demonstrated, and right now the
+   coarse version shows nothing.
+
+**So the order of work is:** run the recipe extraction over all 1,175 runs, redo
+pass 3 at full power, and only then commit a split. Committing the 5-fold design
+first would be committing a well-built measuring instrument before knowing there
+is anything to measure.
 
 ## Reproducing
 
@@ -219,6 +273,7 @@ cd tools/splitdx
 python3 run.py designs/owner.py designs/owner2.py   # per-design detail
 python3 compare.py                                  # the ranking table
 python3 kfold.py                                    # the recommended design
+python3 -c "..."                                    # see recipe_signal.out for the content probe
 ```
 
 `run.py` evaluates the shipped split first as a positive control and exits

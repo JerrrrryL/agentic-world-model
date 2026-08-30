@@ -1,0 +1,47 @@
+143 rows with an accuracy, 3 cells: HuggingFaceTB_SmolLM3-3B-Base=49, Qwen_Qwen3-4B-Base=47, Qwen_Qwen3-1.7B-Base=47
+
+=== 1. does the recipe vary INSIDE a cell? (distinct values / rows) ===
+               feature  HuggingFaceTB_  Qwen_Qwen3-1.7  Qwen_Qwen3-4B-
+    pipeline_signature       19/49          22/47          24/47     
+              n_stages        7/49           5/47           8/47     
+               uses_rl        2/49           2/47           2/47     
+         dataset_kinds        6/49           6/47           7/47     
+         dataset_names       39/49          40/47          40/47     
+            n_datasets        9/49           9/47           8/47     
+    n_inference_tricks        6/49           5/47           5/47     
+           n_discarded       10/49          11/47          11/47     
+            confidence        3/49           3/47           3/47     
+           agent_model       21/49          20/47          21/47     
+          agent_family       20/49          19/47          20/47     
+          trace_format        4/49           4/47           4/47     
+         trained_model        1/49           1/47           1/47     
+
+=== 2. cardinality-controlled: R2 minus its within-cell permutation null (500 draws) ===
+               feature  levels       R2     null   excess       z
+          agent_family      24   0.7021   0.1629  +0.5392   +13.1  meta
+           agent_model      25   0.7029   0.1697  +0.5332   +12.0  meta
+    n_inference_tricks       6   0.4871   0.0316  +0.4555   +23.8  RECIPE
+            n_datasets       9   0.5016   0.0606  +0.4409   +15.8  RECIPE
+          trace_format       4   0.3359   0.0212  +0.3146   +18.5  meta
+         dataset_kinds       9   0.2843   0.0551  +0.2291    +9.1  RECIPE
+              n_stages       9   0.2703   0.0504  +0.2199    +8.7  RECIPE
+    pipeline_signature      49   0.5215   0.3378  +0.1837    +3.5  RECIPE
+               uses_rl       2   0.1798   0.0079  +0.1719   +15.0  RECIPE
+           n_discarded      14   0.2361   0.0923  +0.1438    +4.1  RECIPE
+         dataset_names     107   0.7917   0.7508  +0.0409    +0.9  RECIPE
+            confidence       3   0.0406   0.0136  +0.0270    +2.1  RECIPE
+         trained_model       3   0.0090   0.0090  -0.0000    -0.3  meta
+
+=== 3. recipe signal AFTER conditioning on agent_family ===
+    24 families; residual keeps 30% of the within-cell variance
+               feature  levels       R2     null   excess       z
+            n_datasets       9   0.0773   0.0396  +0.0377    +1.8
+              n_stages       9   0.0521   0.0341  +0.0180    +1.1
+         dataset_kinds       9   0.0599   0.0430  +0.0170    +0.9
+    pipeline_signature      49   0.2090   0.1959  +0.0131    +0.3
+           n_discarded      14   0.0978   0.0889  +0.0088    +0.3
+               uses_rl       2   0.0048   0.0016  +0.0032    +1.4
+    n_inference_tricks       6   0.0172   0.0204  -0.0032    -0.2
+
+  0 of 7 recipe features survive conditioning on the agent: (none)
+  strongest surviving z = +1.8; reaching z=3 at this effect size needs about 2.8x the rows (~405). The full corpus has 1175, so this is resolvable -- after the extraction is run beyond gsm8k.
