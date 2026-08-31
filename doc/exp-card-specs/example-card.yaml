@@ -1,0 +1,196 @@
+# Worked example — ILLUSTRATIVE. Paths and numbers are what a card looks like
+# when filled in, not a record of a real run. {dir} is /work/s7 here.
+#
+# The story: the incumbent (exp-02, an SFT model) reasons correctly but slips on
+# multi-digit arithmetic inside its chain of thought. The agent expects
+# rejection-sampling fine-tuning on its own correct solutions to fix that, and
+# sets up a probe that tests the mechanism separately from the score.
+
+schema_version: awm-experiment-card-v1
+card_id: exp-03
+created_at: "2026-08-30T14:12:00Z"
+elapsed_h: 4.6
+
+problem:
+  statement: >-
+    The incumbent gets the solution plan right but makes arithmetic errors in
+    the chain of thought (wrong products, carries, subtractions), so the final
+    answer is off even when the reasoning is sound.
+  evidence:
+    - path: /work/s7/evals/exp-02/dev300.jsonl
+      locator: "items 12, 45, 88, 91, 133, 170, 204, 251"
+      observation: "8 of the first 40 failures: correct setup, one wrong intermediate number"
+    - path: /work/s7/analysis/exp-02_failure_tags.json
+      locator: "tag == arithmetic_slip"
+      observation: "tagged 41 of 96 failures on dev-300 as arithmetic slips"
+  affected_share: 0.43
+  failure_examples:
+    - id: dev300-045
+      source: /work/s7/evals/exp-02/dev300.jsonl
+      question: "A bakery sells 48 muffins on Monday and 3 times as many on Tuesday. If each muffin costs $2.75, how much did the bakery make on Tuesday?"
+      gold: "396"
+      model_output: "... Tuesday: 48 * 3 = 144 muffins. Revenue: 144 * 2.75 = 386. ANSWER: 386"
+      failure: "plan correct; 144 x 2.75 computed as 386 instead of 396"
+    - id: dev300-088
+      source: /work/s7/evals/exp-02/dev300.jsonl
+      question: "Maria has 1,250 stickers. She gives 3/5 of them to her brother and then buys 340 more. How many does she have now?"
+      gold: "840"
+      model_output: "... gives away 1250 * 3/5 = 750, leaving 1250 - 750 = 600. Then 600 + 340 = 930. ANSWER: 930"
+      failure: "plan correct; 600 + 340 computed as 930"
+    - id: dev300-170
+      source: /work/s7/evals/exp-02/dev300.jsonl
+      question: "A train travels 68 miles per hour for 4.5 hours. How far does it travel?"
+      gold: "306"
+      model_output: "... 68 * 4.5 = 68 * 4 + 68 * 0.5 = 272 + 34 = 296. ANSWER: 296"
+      failure: "decomposition correct; 272 + 34 computed as 296"
+  watch_set:
+    path: /work/s7/analysis/exp-02_arith_watch.jsonl
+    n: 41
+    selection: "all dev-300 failures of exp-02 tagged arithmetic_slip by tag_failures.py"
+
+hypothesis:
+  claim: >-
+    Rejection-sampling fine-tuning (RFT) of exp-02 on its own sampled solutions,
+    kept only when the final answer matches gsm8k-train gold, will raise dev-300
+    accuracy by reducing arithmetic slips.
+  mechanism: >-
+    Training on the model's own correct traces reinforces the arithmetic steps it
+    already executes correctly, in its own distribution, rather than imitating
+    MetaMathQA's style as SFT did.
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: exp-02
+    magnitude: "+3 to +6 pts on dev-300"
+  falsified_if: >-
+    dev-300 accuracy is within +-1.5 pts of exp-02, or the arithmetic-slip share
+    of failures does not drop below 0.35.
+
+setup:
+  parent_checkpoint:
+    path: /work/s7/ckpts/exp-02/final
+    origin: exp-02
+    hash: "sha256:9c1e...b7a0"
+  data:
+    - path: /work/s7/data/exp-03/rft_correct.jsonl
+      source: synthetic:self
+      n_examples: 18240
+      built_by: /work/s7/scripts/sample_and_filter.py
+      build_command:
+        - python
+        - /work/s7/scripts/sample_and_filter.py
+        - --model
+        - /work/s7/ckpts/exp-02/final
+        - --questions
+        - /work/s7/data/gsm8k_train_minus_fewshot.jsonl
+        - --k
+        - "8"
+        - --temperature
+        - "0.8"
+        - --out
+        - /work/s7/data/exp-03/rft_correct.jsonl
+      selection: >-
+        8 samples per gsm8k-train question (few-shot items removed); keep samples
+        whose ANSWER line equals gold; at most 4 kept per question; exact-dup drop.
+      contamination_check: passed
+      mixture_weight: 1.0
+  method:
+    family: rft
+    framework: trl.SFTTrainer 0.19
+    peft: none
+    hyperparams:
+      lr: 5.0e-06
+      epochs: 1
+      batch_size: 4
+      grad_accum: 4
+      max_seq_len: 2048
+      scheduler: cosine
+      warmup: 0.05
+      weight_decay: 0.01
+      precision: bf16
+      seed: 42
+      other: "packing=True, assistant_only_loss=True"
+    target_format: >-
+      the eval template's chat format; assistant turn = the sampled solution
+      ending in "ANSWER: <n>"
+  command:
+    argv:
+      - python
+      - /work/s7/scripts/train_sft.py
+      - --model-name
+      - /work/s7/ckpts/exp-02/final
+      - --data
+      - /work/s7/data/exp-03/rft_correct.jsonl
+      - --output-dir
+      - /work/s7/ckpts/exp-03
+      - --lr
+      - "5e-6"
+      - --epochs
+      - "1"
+    cwd: /work/s7
+    script: /work/s7/scripts/train_sft.py
+    env: {}
+    log: /work/s7/logs/exp-03.train.log
+  budget:
+    gpu: "1x H100 80GB"
+    planned_h: 1.5
+
+evaluation:
+  protocol:
+    command:
+      - python
+      - /work/s7/evaluate.py
+      - --model
+      - /work/s7/ckpts/exp-03/final
+      - --limit
+      - "300"
+    dev_set: "official --limit 300"
+    n: 300
+    seed: 0
+  comparator:
+    ref: exp-02
+    value: 0.68
+    path: /work/s7/evals/exp-02/dev300.jsonl
+  diagnostic:
+    what: "arithmetic-slip share of failures on dev-300, via the same tagger used on exp-02"
+    command:
+      - python
+      - /work/s7/analysis/tag_failures.py
+      - --eval
+      - /work/s7/evals/exp-03/dev300.jsonl
+      - --out
+      - /work/s7/analysis/exp-03_failure_tags.json
+    path: /work/s7/analysis/exp-03_failure_tags.json
+
+result:
+  execution: completed
+  wall_h: 1.3
+  output_checkpoint: /work/s7/ckpts/exp-03/final
+  training_summary: {final_loss: 0.31, steps: 1140, notes: null}
+  measurements:
+    - metric: accuracy
+      value: 0.723
+      n: 300
+      path: /work/s7/evals/exp-03/dev300.jsonl
+      delta_vs_comparator: 0.043
+  diagnostic_result:
+    value: 0.29
+    path: /work/s7/analysis/exp-03_failure_tags.json
+    notes: "arithmetic slips 24 of 83 failures, down from 41 of 96"
+  watch_set_result:
+    fixed: 22
+    still_failing: 19
+    path: /work/s7/evals/exp-03/arith_watch.jsonl
+    regressions: 4
+  failure: null
+
+conclusion:
+  verdict: supported
+  mechanism_verdict: supported
+  summary: >-
+    +4.3 pts on dev-300 over exp-02 under the same protocol, and the slip share
+    fell from 0.43 to 0.29, so the gain is where the hypothesis said it would be.
+  decision: adopt
+  next_step: >-
+    A second RFT round sampling from exp-03 itself (exp-04) to see whether the
+    slip share keeps falling or has plateaued.
