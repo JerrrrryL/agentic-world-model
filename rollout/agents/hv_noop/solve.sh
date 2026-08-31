@@ -26,6 +26,47 @@ if os.path.exists(dst):
     shutil.rmtree(dst)
 shutil.copytree(src, dst, symlinks=False)
 print("copied", src, "->", dst)
+
+#: `base` is the untrained control, and it must meet the eval on the same terms as the
+#: trained arms. vLLM ignores `do_sample` and reads temperature/top_p/top_k from this
+#: file, and Qwen3-*-Base names none of them -- so an unpinned control is sampled at the
+#: library default of 1.0 while every hv_recipe cell is greedy, which makes "was this arm
+#: trained" and "did this cell get the harness's decode" the same column. That is the
+#: confound ptb_ops/make_greedy_shadow.py exists to remove; same four fields, same values.
+#: The stop set is offered symmetrically for the same reason: training decides whether a
+#: model EMITS the turn terminator, not which ones the server honours.
+_gcp = os.path.join(dst, "generation_config.json")
+try:
+    import json
+    from transformers import AutoTokenizer
+    _tok = AutoTokenizer.from_pretrained(model_id)
+    _tpl = os.path.join(os.getcwd(), "templates", "qwen3.jinja")
+    if os.path.exists(_tpl):
+        _tok.chat_template = open(_tpl).read()
+    _SENT = "HVSTOPPROBE"
+    _probe = _tok.apply_chat_template([{"role": "user", "content": "x"},
+                                       {"role": "assistant", "content": _SENT}],
+                                      tokenize=False)
+    _stop = _probe.split(_SENT, 1)[1].strip() if _SENT in _probe else ""
+    _ids = _tok.encode(_stop, add_special_tokens=False) if _stop else []
+    with open(_gcp) as _f:
+        _gc = json.load(_f)
+    _prev = _gc.get("eos_token_id")
+    _prev = _prev if isinstance(_prev, list) else ([] if _prev is None else [_prev])
+    if len(_ids) == 1:
+        _gc["eos_token_id"] = _ids + [i for i in _prev if i != _ids[0]]
+    else:
+        print(f"[hv_noop] WARNING: terminator {_stop!r} -> {_ids}, eos left as {_prev}")
+    _gc.update({"do_sample": False, "temperature": 0.0, "top_p": 1.0, "top_k": -1})
+    with open(_gcp, "w") as _f:
+        json.dump(_gc, _f, indent=2)
+    print(f"[hv_noop] decode pinned: {_gc}")
+except Exception as _e:
+    #: Loud, not fatal: a crash here costs the control cell outright, while an unpinned
+    #: control is still a number -- one that must not be compared to the recipe arms.
+    print(f"[hv_noop] WARNING: could NOT pin decode ({_e!r}). This cell's decode does "
+          f"NOT match the hv_recipe arms; do not read it as a floor.")
+
 print(sorted(os.listdir(dst)))
 PY
 ls -la final_model

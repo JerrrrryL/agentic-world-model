@@ -425,8 +425,39 @@ SFTTrainer(model=model, args=args, train_dataset=train,
 
 # The final checkpoint is what ships -- always, for every arm. Choosing a
 # checkpoint is execution, and several corpus runs lost their score right here.
+#: The other half of the terminator problem; the probe above only fixed the training
+#: half. `save_pretrained` copies the Base checkpoint's generation_config verbatim, so
+#: eos_token_id ships as <|endoftext|> -- the token this run deliberately did NOT train
+#: on -- while vLLM takes its stop set from exactly this file. The model then emits
+#: STOP, the server does not honour it, and generation runs to the 4000-token cap with
+#: `match(numeric=True)` reading the last number out of the tail. Measured over the 27
+#: shipped PTB gsm8k checkpoints on disk: all nine that kept the Base default scored
+#: <= 0.126, and every score above 0.13 came from one that listed the terminator.
+_eos = tok.encode(STOP, add_special_tokens=False)
+assert len(_eos) == 1, f"terminator {STOP!r} tokenises to {_eos}, not one id"
+_prev = model.generation_config.eos_token_id
+_prev = _prev if isinstance(_prev, list) else ([] if _prev is None else [_prev])
+model.generation_config.eos_token_id = _eos + [i for i in _prev if i != _eos[0]]
+
 model.save_pretrained(OUT)
 tok.save_pretrained(OUT)
+
+#: Decode, written straight into the JSON because transformers REFUSES to save a
+#: config with `temperature` set while `do_sample` is False -- it raises, and a raise
+#: here costs the whole cell. vLLM ignores `do_sample` (a transformers field) and reads
+#: temperature/top_p/top_k, so a checkpoint that names neither is evaluated at the
+#: library default of 1.0. Same four fields, same reasoning, as ptb_ops/
+#: make_greedy_shadow.py, which exists because two of twenty-three cells on the
+#: one-hour board happened to write temperature 0.0 and were the only two above 0.5.
+#: This is a FIXED execution setting, not a recipe field: every arm gets exactly these.
+_gcp = os.path.join(OUT, "generation_config.json")
+with open(_gcp) as _f:
+    _gc = json.load(_f)
+_gc.update({"do_sample": False, "temperature": 0.0, "top_p": 1.0, "top_k": -1})
+with open(_gcp, "w") as _f:
+    json.dump(_gc, _f, indent=2)
+print(f"[hv] decode pinned: {_gc}", flush=True)
+
 print("[hv] saved", OUT, sorted(os.listdir(OUT)), flush=True)
 TRAINER
 
