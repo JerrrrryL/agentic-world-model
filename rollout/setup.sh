@@ -26,12 +26,36 @@ git -C "$DST" fetch --quiet origin
 git -C "$DST" checkout --quiet --detach "$PIN"
 echo "pinned to $(git -C "$DST" rev-parse HEAD)"
 
-for a in hv_recipe hv_noop; do
+for a in hv_recipe hv_noop claude_fulltraj_noawm claude_wm; do
     install -d "$DST/agents/$a"
     install -m 0755 "$HERE/agents/$a/solve.sh"     "$DST/agents/$a/solve.sh"
     install -m 0644 "$HERE/agents/$a/api_keys.json" "$DST/agents/$a/api_keys.json"
 done
 mkdir -p "$DST/slurm_logs"
+
+# The Claude scaffolds read the OAuth token from their own agent dir (run_task.sh
+# copies agents/<agent>/oauth_token into the sandbox only from there).
+OAUTH="$SRC/agents/claude_non_api/oauth_token"
+if [ -f "$OAUTH" ]; then
+    for a in claude_fulltraj_noawm claude_wm; do install -m 0600 "$OAUTH" "$DST/agents/$a/oauth_token"; done
+    echo "oauth_token installed for claude_fulltraj_noawm, claude_wm"
+else
+    echo "WARNING: $OAUTH not found; claude_* agents will fail at start" >&2
+fi
+
+# Pin which awm the claude_wm cells clone. Baked into solve.sh because the sandbox
+# is --cleanenv and sees no host environment.
+if [ -n "${AWM_REPO_REF:-}" ] || [ -n "${AWM_REPO_URL:-}" ]; then
+    sed -i \
+        -e "s#^AWM_REPO_URL=.*#AWM_REPO_URL=\"\${AWM_REPO_URL:-${AWM_REPO_URL:-https://github.com/JerrrrryL/agentic-world-model.git}}\"#" \
+        -e "s#^AWM_REPO_REF=.*#AWM_REPO_REF=\"\${AWM_REPO_REF:-${AWM_REPO_REF:-wm-runtime}}\"#" \
+        "$DST/agents/claude_wm/solve.sh"
+fi
+grep -E '^AWM_REPO_(URL|REF)=' "$DST/agents/claude_wm/solve.sh"
+
+# Runner patch (idempotent) and the study's prompt files.
+python3 "$HERE/patches/apply_extra_binds.py" "$DST/src/run_task.sh"
+python3 "$HERE/build_prompts.py" "$DST"
 
 # Own results dir; everything else copied from the shared checkout's .env so the
 # container name and caches match what the corpus runs used.
@@ -45,4 +69,4 @@ chmod 600 "$DST/.env"
 echo "results dir : $RESULTS"
 echo "checkout    : $DST"
 grep -c . "$DST/.env" >/dev/null
-echo "agent installed:"; ls -la "$DST/agents/hv_recipe"
+echo "agents installed:"; ls "$DST/agents" | grep -E "hv_|claude_(fulltraj|wm)"

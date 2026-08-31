@@ -287,3 +287,28 @@ def test_cli_and_stop_hook(tmp_path: Path) -> None:
     proc = subprocess.run([sys.executable, "-m", "awm.cli", "wm", "checkpoint", "exp-01", str(ckpt), "--step", "250"],
                           capture_output=True, text=True, env=env, check=False)
     assert proc.returncode == HOOK_YIELD and "YIELD" in proc.stdout
+
+
+def test_adopt_copy_mode_and_memory_sides(tmp_path: Path) -> None:
+    s, sd = make_session(tmp_path, parent_score=0.30)
+    s.config["submission_mode"] = "copy"
+    ckpt = make_ckpt(sd, "exp-01", 750, 0.42)
+    (sd / "submission").mkdir()  # a stale directory from an earlier adopt
+    (sd / "submission" / "old.txt").write_text("stale")
+    s._adopt({"card_id": "exp-01", "seal": {"checkpoint": str(ckpt), "obs_id": "obs-3"}})
+    sub = sd / "submission"
+    assert sub.is_dir() and not sub.is_symlink()
+    assert (sub / "config.json").is_file() and not (sub / "old.txt").exists()
+    assert json.loads((s.wm / "incumbent.json").read_text())["obs_id"] == "obs-3"
+
+    # memory sides: a test-side row is invisible by default, visible when asked for
+    from awm.wm.memory import Memory
+    mem_root = tmp_path / "mem2"
+    writer = Memory(mem_root, session="x", arm="null", split_side="test")
+    card = yaml.safe_load(write_card(sd).read_text())
+    writer._append("cards", {"card_id": "exp-09", "base_model": "fake/base-1b", "method_family": "sft",
+                             "data_sources": ["local"], "problem": card["problem"]["statement"],
+                             "claim": card["hypothesis"]["claim"], "best_selection_value": 0.5, "parent_value": 0.3})
+    assert Memory(mem_root, session="y", arm="retrieval").precedents(card) == []
+    both = Memory(mem_root, session="y", arm="retrieval", visible_sides=("train", "test")).precedents(card)
+    assert [p["card_id"] for p in both] == ["exp-09"] and both[0]["delta_best_vs_parent"] == pytest.approx(0.2)

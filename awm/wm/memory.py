@@ -32,12 +32,13 @@ def tokens(text: str) -> set[str]:
 
 class Memory:
     def __init__(self, root: Path, *, session: str, arm: str, split_side: str = "train",
-                 readonly: bool = False):
+                 readonly: bool = False, visible_sides: tuple[str, ...] = ("train",)):
         self.root = Path(root)
         self.session = session
         self.arm = arm
         self.split_side = split_side
         self.readonly = readonly
+        self.visible_sides = tuple(visible_sides)
         self.structured = self.root / "structured"
         if not readonly:
             (self.root / "raw").mkdir(parents=True, exist_ok=True)
@@ -144,7 +145,7 @@ class Memory:
         ]))
         scored = []
         for row in self._rows("cards"):
-            if row.get("provenance", {}).get("split_side") != "train":
+            if row.get("provenance", {}).get("split_side") not in self.visible_sides:
                 continue
             doc = tokens(" ".join([
                 str(row.get("base_model", "")), str(row.get("method_family", "")),

@@ -60,6 +60,8 @@ def default_config(session_dir: Path, arm: str = "null") -> dict[str, Any]:
         "memory_root": os.environ.get("AWM_WM_MEMORY") or str(_data_root() / "wm-memory"),
         "memory_readonly": False,
         "submission": str(session_dir / "submission"),
+        "submission_mode": "symlink",   # or "copy": adopt copies the sealed checkpoint into `submission`
+        "memory_sides": ["train"],      # which split sides the agent may retrieve from
         "official_argv": None,      # default: python evaluate.py --model-path {checkpoint} --limit {n} --json-output-file {out}/metrics.json
         "official_cwd": None,       # default: the session dir
         "custom_argv": None,        # default: python -m awm.wm.score_items ...
@@ -98,7 +100,8 @@ class Session:
         self.cards_dir = self.wm / "cards"
         self.memory = Memory(Path(self.config["memory_root"]), session=self.config["session_id"],
                              arm=self.config["arm"], split_side=self.config.get("split_side", "train"),
-                             readonly=bool(self.config.get("memory_readonly")))
+                             readonly=bool(self.config.get("memory_readonly")),
+                             visible_sides=tuple(self.config.get("memory_sides") or ["train"]))
         self.agent = make_agent(self.config["arm"])
 
     # ------------------------------------------------------------ init
@@ -753,14 +756,31 @@ class Session:
     def _adopt(self, st) -> None:
         target = Path(st["seal"]["checkpoint"])
         sub = Path(self.config["submission"])
-        tmp = sub.with_name(sub.name + ".tmp")
-        if tmp.is_symlink() or tmp.exists():
-            tmp.unlink()
-        tmp.symlink_to(target, target_is_directory=True)
-        os.replace(tmp, sub)
+        if not inside(sub, self.dir):
+            raise WMError(f"submission {sub} is outside the session directory")
+        mode = self.config.get("submission_mode", "symlink")
+        if mode == "copy":
+            # the benchmark runner collects a real directory (final_model/), not a link
+            tmp = sub.with_name(sub.name + ".tmp")
+            if tmp.is_symlink():
+                tmp.unlink()
+            elif tmp.exists():
+                shutil.rmtree(tmp)
+            shutil.copytree(target, tmp, symlinks=False)
+            if sub.is_symlink():
+                sub.unlink()
+            elif sub.exists():
+                shutil.rmtree(sub)
+            os.replace(tmp, sub)
+        else:
+            tmp = sub.with_name(sub.name + ".tmp")
+            if tmp.is_symlink() or tmp.exists():
+                tmp.unlink()
+            tmp.symlink_to(target, target_is_directory=True)
+            os.replace(tmp, sub)
         dump_json(self.wm / "incumbent.json", {"card_id": st["card_id"], "checkpoint": str(target),
                                                "obs_id": st["seal"]["obs_id"], "at": now()})
-        self.ledger.append("adopted", card_id=st["card_id"], checkpoint=str(target), submission=str(sub))
+        self.ledger.append("adopted", card_id=st["card_id"], checkpoint=str(target), submission=str(sub), mode=mode)
 
     def _record_to_memory(self, card_id: str, result: dict[str, Any] | None) -> None:
         st = self.state(card_id)
