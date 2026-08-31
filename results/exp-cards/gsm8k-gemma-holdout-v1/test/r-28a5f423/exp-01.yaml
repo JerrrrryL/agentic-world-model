@@ -1,0 +1,161 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-01
+created_at: null
+elapsed_h: 0.03
+
+problem:
+  statement: null
+  evidence: []
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+
+hypothesis:
+  claim: null
+  mechanism: null
+  expected_effect:
+    metric: accuracy
+    direction: null
+    against: base_model
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data: []
+  method:
+    family: other
+    framework: transformers 4.57.6
+    peft: "none"
+    hyperparams:
+      lr: null
+      epochs: null
+      batch_size: null
+      grad_accum: null
+      max_seq_len: null
+      scheduler: null
+      warmup: null
+      weight_decay: null
+      precision: bf16
+      seed: null
+      other: >-
+        No training. The base checkpoint is loaded in bfloat16 and written to
+        final_model/ so the harness eval can serve it; config.json and
+        generation_config.json were copied in at [52] and the processor files
+        saved at [58] after vLLM refused to load the directory.
+    target_format: null
+  command:
+    argv:
+      - mkdir
+      - -p
+      - final_model
+      - "&&"
+      - python
+      - -c
+      - |-
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+
+        print('Loading base model...')
+        model_name = 'google/gemma-3-4b-pt'
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+            device_map='auto'
+        )
+
+        # Save to final_model for baseline evaluation
+        print('Saving baseline model to final_model...')
+        model.save_pretrained('final_model')
+        tokenizer.save_pretrained('final_model')
+        print('Done!')
+    cwd: /home/ben/task
+    script: null
+    env: {}
+    log: null
+  budget:
+    gpu: "1x H100 80GB"
+    planned_h: null
+
+evaluation:
+  protocol:
+    command:
+      - python
+      - evaluate.py
+      - --model-path
+      - final_model
+      - --limit
+      - "20"
+      - --max-connections
+      - "1"
+      - --gpu-memory-utilization
+      - "0.5"
+    dev_set: "official --limit 20"
+    n: 20
+    seed: null
+  comparator:
+    ref: base_model
+    value: null
+    path: null
+  diagnostic:
+    what: null
+    command: []
+    path: null
+
+result:
+  execution: completed
+  wall_h: null
+  output_checkpoint: /home/ben/task/final_model
+  training_summary: {final_loss: null, steps: null, notes: "no training; packaging only"}
+  measurements:
+    - metric: accuracy
+      value: 0.05
+      n: 20
+      path: /home/ben/task/logs/2026-01-20T12-50-27+00-00_gsm8k_ZMFvt6p532tP4T4qVs6qdg.json
+      delta_vs_comparator: null
+  diagnostic_result: {value: null, path: null, notes: null}
+  watch_set_result: null
+  failure: null
+
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: >-
+    The untrained base checkpoint, packaged into final_model/ and served through
+    the harness, scores 0.050 on 20 samples (stderr 0.050). The agent at [64]:
+    "The baseline model gets 5% accuracy (1 out of 20), which is expected for a
+    pre-trained model without instruction tuning."
+  decision: reject
+  next_step: >-
+    Build SFT data from GSM8K train plus MetaMathQA and fine-tune ([64]).
+
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-28a5f423
+  launch_i: 42
+  stated_by_agent:
+    problem: false
+    hypothesis: false
+  anchors:
+    problem: []
+    setup: [42, 43, 50, 51, 52, 53, 58, 59, 60, 61]
+    evaluation: [62]
+    result: [63]
+    conclusion: [64]
+  snapshot_files:
+    - evaluate.py
+    - timer.sh
+  smoke_runs:
+    - {launch_i: 44, outcome: "crashed: vLLM server would not start - no image processor / preprocessor_config.json in final_model"}
+    - {launch_i: 47, outcome: "crashed: same, run manually to read the traceback"}
+  extractor: claude-opus-5
+  unresolved:
+    - "The eval writes its per-sample log to logs/<timestamp>_gsm8k_<id>.json; that directory is not in the workspace snapshot, so the accuracy can only be read back from the printed summary at [63]."
+    - "Whether the 1/20 correct item was a genuine solve or a formatting fluke was never inspected."

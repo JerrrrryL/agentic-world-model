@@ -1,0 +1,233 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-06
+created_at: null
+elapsed_h: 6.52
+problem:
+  statement: v2 sits at ~70% and the run has a safe submission in place, but v2's residual errors are
+    still reasoning errors and the one attempt to fix them (v3, with rejection data) collapsed. "I have
+    3:30 left and a safe fallback, so let me attempt one improvement" [678].
+  evidence:
+  - path: /home/ben/task/logs/final500_metrics.json
+    locator: '[747]'
+    observation: the incumbent, final_model = v2, is locked at 0.702 on 500 samples
+  - path: /home/ben/task/logs/v3g_metrics.json
+    locator: '[628], [820]'
+    observation: the rejection-data run scored 0.200 - that line is closed
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+hypothesis:
+  claim: '"v4 = larger diverse MetaMath (no rejection data, which broke v3) trained 1 epoch to maximize
+    data diversity while avoiding the overfitting that broke v3" [678] - 133K examples for a single epoch
+    will beat v2''s greedy 70.7% on the same 300-sample slice.'
+  mechanism: More distinct MetaMathQA GSM problems give broader reasoning coverage, while one epoch instead
+    of two keeps the fit light - the agent's working theory for v3's collapse being "lower train loss
+    -> worse generalization" [741].
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: exp-03
+    magnitude: null
+  falsified_if: '"only replace final_model if v4 clearly wins" [695] - anything short of a clear win over
+    v2''s 70.7% on the same 300 samples leaves v2 in place.'
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+  - path: /home/ben/task/data/gsm8k_train.jsonl
+    source: HF openai/gsm8k, main, train split
+    n_examples: 7473
+    built_by: /home/ben/task/data_prep.py
+    build_command:
+    - python
+    - data_prep.py
+    selection: unchanged from exp-01 [98]
+    contamination_check: not_run
+    mixture_weight: null
+    repeats: null
+  - path: /home/ben/task/data/metamath_gsm.jsonl
+    source: HF meta-math/MetaMathQA, train split, types GSM_Rephrased + GSM_AnsAug
+    n_examples: null
+    built_by: /home/ben/task/data_prep.py
+    build_command:
+    - python
+    - data_prep.py
+    selection: cap raised from 25000 to 45000 per type by an in-place sed on data_prep.py, then regenerated
+      [679]
+    contamination_check: not_run
+    mixture_weight: null
+    repeats: null
+  - path: /home/ben/task/data/metamath_gsm_extra.jsonl
+    source: HF meta-math/MetaMathQA, train split, types GSM_SV + GSM_FOBAR
+    n_examples: null
+    built_by: /home/ben/task/data_prep.py
+    build_command:
+    - python
+    - data_prep.py
+    selection: cap raised from 12000 to 18000 per type by the same sed [679]
+    contamination_check: not_run
+    mixture_weight: null
+    repeats: null
+  method:
+    family: sft
+    framework: transformers.Trainer (transformers 4.57.3)
+    peft: none
+    hyperparams:
+      lr: 2.0e-05
+      epochs: 1.0
+      batch_size: 8
+      grad_accum: 8
+      max_seq_len: 1024
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.0
+      precision: bf16 (bf16=True, torch_dtype=torch.bfloat16, flash_attention_2 with an sdpa fallback)
+      seed: 0
+      other: the only deliberate changes from exp-03 are epochs 2 -> 1 and the larger MetaMath caps; the
+        few-shot file is dropped and no rejection data is used. warmup, weight_decay and seed remain the
+        argparse defaults of the snapshot train_sft.py, not overridden; scheduler and the rest of TrainingArguments
+        are hard-coded [120].
+    target_format: 'as exp-04: zero-shot user turn holding the eval''s MATH_PROMPT_TEMPLATE, assistant
+      turn = chain of thought + "\n\nANSWER: X" + <end_of_turn>, prompt masked.'
+  command:
+    argv:
+    - python
+    - train_sft.py
+    - --data
+    - data/gsm8k_train.jsonl
+    - data/metamath_gsm.jsonl
+    - data/metamath_gsm_extra.jsonl
+    - --output_dir
+    - runs/v4
+    - --epochs
+    - '1'
+    - --lr
+    - 2e-5
+    - --bs
+    - '8'
+    - --accum
+    - '8'
+    - --max_len
+    - '1024'
+    - --save
+    cwd: /home/ben/task
+    script: /home/ben/task/train_sft.py
+    env: {}
+    log: /home/ben/task/logs/train_v4.log
+  budget:
+    gpu: one NVIDIA H100 80GB HBM3
+    planned_h: null
+evaluation:
+  protocol:
+    command:
+    - python
+    - evaluate.py
+    - --model-path
+    - runs/v4_greedy
+    - --limit
+    - '300'
+    - --max-connections
+    - '16'
+    - --gpu-memory-utilization
+    - '0.6'
+    - --json-output-file
+    - logs/v4g300_metrics.json
+    dev_set: official --limit 300 - deliberately the same slice v2 was measured on [695]
+    n: 300
+    seed: null
+  comparator:
+    ref: exp-03
+    value: 0.707
+    path: /home/ben/task/logs/v2g300_metrics.json
+  diagnostic:
+    what: 'generation-length and stopping analysis - do the outputs terminate after ANSWER: or re-emit
+      the prompt template?'
+    command:
+    - python
+    - -c
+    - 'over the newest logs/*.json eval file, count samples with no ANSWER: and samples that re-emit ''Solve
+      the following'''
+    path: null
+result:
+  execution: completed
+  wall_h: 1.58
+  duration_h: 1.58
+  steps: 2086
+  output_checkpoint: /home/ben/task/runs/v4
+  training_summary:
+    final_loss: 0.161
+    steps: 2086
+    notes: '"v4 done (train_loss 0.161 - healthy, between v2''s 0.174 and v3''s broken 0.138)" [701].
+      133K examples, 2086 steps [695]. wall_h is the distance between the launch at [685] (t=+6.52h) and
+      the save report at [701] (t=+8.10h), an upper bound.'
+  measurements:
+  - metric: accuracy
+    value: 0.39
+    n: 300
+    path: /home/ben/task/logs/v4g300_metrics.json
+    delta_vs_comparator: -0.317
+  diagnostic_result:
+    value: 99
+    path: null
+    notes: '"99/300 generations ramble, one was 13,600 chars" [733]; 2 samples produce no ANSWER: at all
+      [731]. The same non-stopping failure as v3, reached without any rejection data and with only one
+      epoch.'
+  watch_set_result: null
+  failure: null
+conclusion:
+  verdict: contradicted
+  mechanism_verdict: not_tested
+  summary: 'More data at one epoch did not beat v2 - it broke the same way v3 did: 0.390 against v2''s
+    0.707 on the same 300 samples, with a third of the generations failing to stop. "Both larger-data
+    runs (v3=107K, v4=133K) broke while v2 (85K) works" [729]; the agent could not diagnose the cause
+    in the time left.'
+  decision: adopt
+  next_step: '"rescue v4 ... via a short continued fine-tune on clean gsm8k_train to restore `<end_of_turn>`
+    emission. If it beats v2, I''ll use it; otherwise v2 stays" [750] - exp-07.'
+outcome:
+  official_accuracy: 0.6770280515542078
+provenance:
+  kind: extracted
+  run_ref: r-6b7e26ac
+  launch_i: 685
+  stated_by_agent:
+    problem: true
+    hypothesis: true
+  anchors:
+    problem:
+    - 678
+    - 747
+    setup:
+    - 679
+    - 685
+    evaluation:
+    - 702
+    result:
+    - 695
+    - 701
+    - 729
+    - 731
+    - 733
+    - 820
+    conclusion:
+    - 729
+    - 733
+    - 750
+  snapshot_files:
+  - train_sft.py
+  - data_prep.py
+  - make_greedy.py
+  - evaluate.py
+  smoke_runs: []
+  extractor: null
+  unresolved:
+  - the per-file counts printed by the [679] regeneration are not in the digest; only the agent's rounded
+    total of 133K [695]
+  - decision is `adopt` because runs/v4 is the parent checkpoint of exp-07, not because it was ever the
+    incumbent - it was evaluated at 0.390 and never used for the submission
+  - the token-length probe at [731] returned zeros (token_ids absent from the eval JSON), so the length
+    statistics in that block are void; only the ramble count and the printed samples are usable
+  - logs/ and data/ are not in the workspace snapshot; data_prep.py in the snapshot is the version this
+    launch used (caps 45000/18000)

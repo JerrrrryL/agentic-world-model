@@ -1,0 +1,232 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-01
+created_at: null
+elapsed_h: 0.30
+
+problem:
+  statement: >-
+    The raw base model scores 3.3% on the evaluator's first 30 items. Its
+    dominant failure is not arithmetic: it produces an answer and then keeps
+    generating, continuing into another problem from the ten-shot pattern, so
+    the numeric scorer reads a later number instead of the answer.
+  evidence:
+    - path: /home/ben/task/baseline30.json
+      locator: "[20], [43]"
+      observation: "raw google/gemma-3-4b-pt scores 0.0333 under evaluate.py --limit 30"
+    - path: /home/ben/task/RESEARCH.md
+      locator: "## Initial measurements"
+      observation: >-
+        "The dominant qualitative failure is continuation into unrelated problems
+        after producing an answer. This makes the numeric matcher select a later
+        number."
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+
+hypothesis:
+  claim: >-
+    One epoch of full-parameter SFT over 100,000 GSM8K-train-derived MetaMathQA
+    problems, reformatted to the evaluator's "ANSWER: <n>" protocol and
+    terminated with Gemma's end-of-turn token, will give the base model both the
+    reasoning exposure and the stopping behaviour it lacks. A midpoint
+    checkpoint is saved to test whether the full epoch beats half an epoch.
+  mechanism: >-
+    Completion-only loss on 100k diverse GSM-derived paraphrase/answer-
+    augmentation variants teaches the response protocol (answer marker plus turn
+    stop) while broadening exposure beyond the 7.5K original questions.
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: base_model
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+    - path: null
+      source: "meta-math/MetaMathQA (GSM_* rows only), built in-process by the trainer"
+      n_examples: 100000
+      built_by: /home/ben/task/train_sft.py
+      build_command:
+        - python
+        - train_sft.py
+        - --stage
+        - metamath
+        - --num-samples
+        - "100000"
+      selection: >-
+        build_metamath_dataset(): stratified 35% GSM_Rephrased / 35% GSM_AnsAug /
+        15% GSM_SV / remainder GSM_FOBAR, each type shuffled with seed+type_index
+        then concatenated and reshuffled with seed 42; MetaMath's duplicated
+        "#### x" / "The answer is: x" markers collapsed into one "ANSWER: <n>"
+        line, "<end_of_turn>" appended.
+      contamination_check: passed
+      mixture_weight: 1.0
+      repeats: 1
+  method:
+    family: sft
+    framework: "transformers.Trainer (Gemma3ForConditionalGeneration, flash_attention_2); transformers 4.57.3"
+    peft: none
+    hyperparams:
+      lr: 1.0e-05
+      epochs: 1
+      batch_size: 16
+      grad_accum: 1
+      max_seq_len: 1024
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.0
+      precision: bf16
+      seed: 42
+      other: >-
+        scheduler/weight_decay/precision/optimizer are train_sft.py's fixed
+        TrainingArguments, not launch flags (lr_scheduler_type=cosine,
+        weight_decay=0.0, bf16=True, tf32=True, gradient_checkpointing=True,
+        optim=adamw_torch_fused, max_grad_norm=1.0); seed=42 is the script's
+        argparse default and was not overridden on this launch. Completion-only
+        loss via CompletionCollator; vision tower and multimodal projector
+        frozen, all 3.88B language parameters trained. --save-steps 3125 wrote a
+        half-epoch checkpoint.
+    target_format: >-
+      gemma3.jinja single-user-turn rendering
+      ("<bos><start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"),
+      completion = normalised MetaMath reasoning + "\n\nANSWER: <n><end_of_turn>".
+  command:
+    argv:
+      - python
+      - train_sft.py
+      - --stage
+      - metamath
+      - --model
+      - google/gemma-3-4b-pt
+      - --output
+      - stage1_model
+      - --num-samples
+      - "100000"
+      - --max-length
+      - "1024"
+      - --batch-size
+      - "16"
+      - --gradient-accumulation
+      - "1"
+      - --epochs
+      - "1"
+      - --learning-rate
+      - "1e-5"
+      - --warmup-ratio
+      - "0.03"
+      - --save-steps
+      - "3125"
+      - --logging-steps
+      - "50"
+    cwd: /home/ben/task
+    script: /home/ben/task/train_sft.py
+    env: {}
+    log: null
+  budget:
+    gpu: "1x NVIDIA H100 80GB (81,559 MiB total)"
+    planned_h: 1.5
+
+evaluation:
+  protocol:
+    command:
+      - python
+      - evaluate.py
+      - --model-path
+      - stage1_model/checkpoint-3125
+      - --limit
+      - "150"
+      - --json-output-file
+      - eval_half_sampled.json
+      - --max-connections
+      - "16"
+      - --max-tokens
+      - "1024"
+      - --gpu-memory-utilization
+      - "0.45"
+    dev_set: "official --limit 150"
+    n: 150
+    seed: null
+  comparator:
+    ref: base_model
+    value: 0.03333333333333333
+    path: /home/ben/task/baseline30.json
+  diagnostic:
+    what: null
+    command: []
+    path: null
+
+result:
+  execution: completed
+  wall_h: 1.52
+  output_checkpoint: /home/ben/task/stage1_model
+  training_summary:
+    final_loss: 0.1367
+    steps: 6250
+    notes: >-
+      [165] "100,000 examples in 91.3 minutes at 18.2 examples/s, with mean train
+      loss 0.1367"; 32.57M total tokens, 16.24M supervised completion tokens
+      [97]. Saving hit a Hugging Face HEAD timeout on optional processor
+      metadata [169]-[182]; the agent rebuilt processor files offline from the
+      local base-model snapshot and set generation_config eos_token_id=[1,106]
+      at [174]/[194]. The half-epoch checkpoint stage1_model/checkpoint-3125 was
+      kept; checkpoint-6250 was deleted at [199].
+  measurements:
+    - metric: accuracy
+      value: 0.04
+      n: 150
+      path: /home/ben/task/eval_half_sampled.json
+      delta_vs_comparator: 0.0067
+  diagnostic_result: {value: null, path: null, notes: null}
+  watch_set_result: null
+  failure: null
+
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: >-
+    [203] "The halfway result is only 4.0%, so the broad SFT fixed turn stopping
+    but did not transfer through the evaluator's long 10-shot prefix. This is an
+    important negative result: the interface mismatch dominates latent math
+    skill." The 4.0% (--limit 150) and the 3.3% base (--limit 30) are not the
+    same protocol, so the comparison cannot settle the claim; the full-epoch
+    checkpoint was never scored on its own.
+  decision: adopt
+  next_step: >-
+    Prioritise an exact-prefix alignment stage over further broad SFT: train on
+    the evaluator's fixed ten-shot context so the answer-to-end-of-turn
+    transition is supervised in the context that is actually scored [203].
+
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-11ba81b6
+  launch_i: 93
+  stated_by_agent:
+    problem: true
+    hypothesis: true
+  anchors:
+    problem: [20, 30, 43]
+    setup: [64, 68, 76, 92, 93]
+    evaluation: [199]
+    result: [97, 165, 169, 174, 194, 196]
+    conclusion: [203, 205]
+  snapshot_files:
+    - train_sft.py
+    - evaluate.py
+    - baseline30.json
+    - eval_half_sampled.json
+    - RESEARCH.md
+  smoke_runs:
+    - {launch_i: 79, outcome: "passed (5 steps, 64 examples, batch 4; checkpoint saved, 8.1G)"}
+    - {launch_i: 88, outcome: "passed (3 steps, 256 examples, batch 16; 46.4 GiB allocated, ~12 examples/s)"}
+  extractor: claude-opus-5[1m]
+  unresolved:
+    - "stage1_model (full epoch) was never evaluated on its own; only the half-epoch checkpoint-3125 has a score."
+    - "The processor/generation-config repair at [174]/[194] changed the saved decode metadata (eos_token_id=[1,106]) before evaluation; the stream does not show what the pre-repair generation config would have scored."

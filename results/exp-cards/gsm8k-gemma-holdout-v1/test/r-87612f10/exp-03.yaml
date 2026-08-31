@@ -1,0 +1,208 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-03
+created_at: null
+elapsed_h: null
+problem:
+  statement: '"The direct GSM8K-only path looks like it''s plateauing in the low-50s on held-out accuracy, even
+    with full fine-tuning. That''s low enough that it justifies a data pivot" [311]. The 7.2k GSM8K training rows
+    are the limit, not the optimiser.'
+  evidence:
+  - path: '{dir}/exp_full_e3_lr2e5_dev.txt'
+    locator: '[293], [311]'
+    observation: full fine-tuning reaches dev_accuracy 0.5273 on the 256-item held-out split
+  - path: '{dir}/exp_lora_e3_lr1e4_dev.txt'
+    locator: '[209], [311]'
+    observation: LoRA reaches 0.5117 on the same split, so both direct GSM8K recipes land in the low 50s
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+hypothesis:
+  claim: '"The GSM-only experiments have likely hit their ceiling, so I''m starting a curriculum stage on MetaMathQA''s
+    GSM-derived subset. The plan is broad GSM-style math adaptation first, then a short return to exact GSM8K
+    formatting and evaluation." [324]'
+  mechanism: 240k GSM-derived MetaMath items (rephrased, answer-augmented, self-verification and FOBAR variants
+    of GSM8K-style problems) give far broader word-problem and arithmetic coverage than the 7.2k GSM8K rows, so
+    a warm-up on them should raise the reasoning ceiling that a short GSM8K pass can then be anchored to ([311],
+    [324], [366]).
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: exp-02
+    magnitude: null
+  falsified_if: null
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+  - path: null
+    source: meta-math/MetaMathQA (split train), filtered to the GSM-derived types
+    n_examples: 50000
+    built_by: '{dir}/gsm8k_pipeline.py'
+    build_command: []
+    selection: 'load_metamath_gsm() keeps the rows whose type starts with "GSM_" - the agent counted 240,000 of
+      395,000 at [306] (GSM_Rephrased 80000, GSM_AnsAug 80000, GSM_SV 40000, GSM_FOBAR 40000) - shuffles with
+      split_seed 1234 and takes the first 50,000 (--max-train-samples 50000). Each response is split by parse_metamath_response
+      on "The answer is:" / "####" and rebuilt as reasoning + "ANSWER: <n>". Sequences truncated at --max-length
+      1024. 1,563 optimizer steps at an effective batch of 32 confirms 50,000 rows [332].'
+    contamination_check: passed
+    mixture_weight: 1.0
+  method:
+    family: sft
+    framework: transformers 4.57.3 Trainer, torch 2.8.0+cu129 (versions printed at [31])
+    peft: none
+    hyperparams:
+      lr: 1.0e-05
+      epochs: 1.0
+      batch_size: 4
+      grad_accum: 8
+      max_seq_len: 1024
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.01
+      precision: bf16
+      seed: null
+      other: 'model-name / dataset-source=metamath_gsm / lr / epochs / batch_size / grad_accum / max_seq_len /
+        max_train_samples=50000 / logging_steps=50 are explicit on the launch argv at [325]. --mode is NOT on
+        the argv: full-parameter training is the argparse default in {dir}/train_gsm8k.py and the launch did not
+        override it, and the 3284 s runtime for 1,563 steps matches the full-FT throughput of exp-02 rather than
+        LoRA. scheduler (cosine), warmup_ratio 0.03, weight_decay 0.01, bf16, optim adamw_bnb_8bit, max_grad_norm
+        1.0, gradient_checkpointing, save_strategy="epoch", save_total_limit=2 and split_seed 1234 are argparse
+        / TrainingArguments defaults read from {dir}/train_gsm8k.py that this launch did not override. No training
+        seed is set anywhere in the script, so `seed` is null; 1234 is only the data-split seed. The vision tower
+        and multimodal projector are frozen (freeze_non_text_modules).'
+    target_format: 'templates/gemma3.jinja; user turn = the same evaluator wording wrapped around the MetaMath
+      query, assistant turn = the MetaMath rationale with its "The answer is:" / "####" tail stripped, then a
+      blank line and "ANSWER: <n>", so the warm-up teaches the benchmark''s answer contract on non-GSM8K data.
+      Loss on the assistant tokens only; no system turn.'
+  command:
+    argv:
+    - python
+    - train_gsm8k.py
+    - --model-name
+    - google/gemma-3-4b-pt
+    - --dataset-source
+    - metamath_gsm
+    - --output-dir
+    - exp_metamath50k_e1_lr1e5
+    - --epochs
+    - '1'
+    - --batch-size
+    - '4'
+    - --grad-accum
+    - '8'
+    - --max-length
+    - '1024'
+    - --learning-rate
+    - 1e-5
+    - --max-train-samples
+    - '50000'
+    - --logging-steps
+    - '50'
+    cwd: '{dir}'
+    script: '{dir}/train_gsm8k.py'
+    env: {}
+    log: null
+  budget:
+    gpu: 1x H100 (run header; no nvidia-smi output appears in the stream)
+    planned_h: 1.0
+evaluation:
+  protocol:
+    command: []
+    dev_set: null
+    n: null
+    seed: null
+  comparator:
+    ref: null
+    value: null
+    path: null
+  diagnostic:
+    what: 'contamination: whether the MetaMath GSM subset contains GSM8K test questions ("if there''s any test
+      leakage, I''ll discard that curriculum branch" [475]) - run after this launch, while exp-04 was training'
+    command:
+    - python
+    - -c
+    - 'inline script at [476] (exact match) and [489] (stricter, punctuation-stripped): normalise MetaMath GSM
+      original_question / query and intersect with GSM8K train and test questions'
+    path: null
+result:
+  execution: completed
+  wall_h: 0.91
+  output_checkpoint: '{dir}/exp_metamath50k_e1_lr1e5'
+  training_summary:
+    final_loss: 0.1329
+    steps: 1563
+    notes: 1,563 steps / 1 epoch over 50k rows, train_runtime 3284.18 s, train_loss 0.1483, last logged step loss
+      0.1329 at epoch 0.99 [451]; the agent read it as "finished cleanly in about 55 minutes and reached a stable
+      ~0.13 loss by the end of the epoch" [453]. The step count and the ~2.2 s/step pace were stated at [332].
+      This checkpoint was never scored on its own - it went straight into exp-04.
+  measurements: []
+  diagnostic_result:
+    value: 0.0
+    path: null
+    notes: 'zero overlap with GSM8K test on both passes: "meta_gsm count 240000 / orig overlap train 7390 / orig
+      overlap test 0 / query overlap train 7178 / query overlap test 0" [479], and "orig overlap train stricter
+      7390 / orig overlap test stricter 0" [490]. The agent concluded "the MetaMath GSM curriculum is safe to
+      use" [499].'
+  watch_set_result: null
+  failure: null
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: The 50k MetaMath GSM warm-up trained to completion and to a low loss, and its data passed both the
+    exact and the normalised GSM8K-test overlap check, but the checkpoint itself was never evaluated - it exists
+    only as the starting point of exp-04, which is where the curriculum was actually measured.
+  decision: adopt
+  next_step: '"a short GSM8K-specific finetune from this checkpoint, then the same held-out evaluator for direct
+    comparison against the earlier baselines" [427] - carried out as exp-04. The agent also held open scaling
+    the warm-up to the full 240k GSM subset [499]; exp-04 disappointed and that never ran.'
+outcome:
+  official_accuracy: null
+provenance:
+  kind: extracted
+  run_ref: r-87612f10
+  launch_i: 325
+  stated_by_agent:
+    problem: true
+    hypothesis: true
+  anchors:
+    problem:
+    - 293
+    - 311
+    setup:
+    - 302
+    - 306
+    - 324
+    - 325
+    - 328
+    evaluation:
+    - 475
+    - 476
+    - 489
+    result:
+    - 332
+    - 451
+    - 453
+    - 479
+    - 490
+    conclusion:
+    - 427
+    - 499
+  snapshot_files:
+  - train_gsm8k.py
+  - gsm8k_pipeline.py
+  - meta_overlap_report.txt
+  smoke_runs: []
+  extractor: claude-opus-5
+  unresolved:
+  - The warm-up checkpoint has no measurement of its own; whether the curriculum helped is observable only through
+    exp-04, which mixes the warm-up with a second GSM8K stage.
+  - '{dir}/meta_overlap_report.txt reports subset_size=240000, gsm8k_train_overlap=80004, gsm8k_test_overlap=0
+    - the train figure does not match the 7390 / 7178 exact overlaps printed at [479], and no command in the stream
+    writes that file.'
+  - '{dir}/contamination_judgement.txt ("no contamination detected") and {dir}/disallowed_model_judgement.txt
+    ("only allowed use detected") are in the workspace, but nothing in the stream produces them; they are not
+    the agent''s own checks.'
+  - The launch does not pass --mode, so full-parameter training is inferred from the script default plus the throughput;
+    the stream never prints trainable_parameters for this run.

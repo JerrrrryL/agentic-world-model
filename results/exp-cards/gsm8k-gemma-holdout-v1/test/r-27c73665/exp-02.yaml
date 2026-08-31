@@ -1,0 +1,154 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-02
+created_at: null
+elapsed_h: 0.44
+
+problem:
+  statement: >-
+    The round-1 training launch never reaches the first optimizer step: the
+    offline sequence-packing loop is first-fit over an ever-growing list of open
+    bins, i.e. O(n x bins) in pure Python, which is too slow for 167k documents.
+  evidence:
+    - path: /home/ben/task/runs/train_r1.log
+      locator: "[27747]"
+      observation: >-
+        agent: "The packing loop is O(n x bins) in pure Python - too slow for 167k
+        docs"; no packing statistics printed after ~4 minutes
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+
+hypothesis:
+  claim: >-
+    Replacing first-fit packing with best-fit-decreasing over a sorted list of
+    free capacities (bisect) makes packing fast enough for the identical round-1
+    training to start and run.
+  mechanism: >-
+    Best-fit-decreasing with a bisect lookup is O(n log n) instead of scanning
+    every open bin per document.
+  expected_effect:
+    metric: null
+    direction: null
+    against: exp-01
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+    - path: /home/ben/task/data/sft_round1.jsonl
+      source: "openai/gsm8k train + meta-math/MetaMathQA (GSM_* types) + microsoft/orca-math-word-problems-200k"
+      n_examples: 167000
+      built_by: /home/ben/task/datagen.py
+      build_command: [python, datagen.py]
+      selection: >-
+        same file as exp-01: GSM8K train solutions with <<>> annotations stripped,
+        MetaMathQA GSM_* split on "The answer is:", Orca-Math final answer
+        extracted; 8-gram overlap filter against all GSM8K test questions; ~12%
+        exact eval few-shot prefix, ~5% random 10-shot prefix, rest prefix-free.
+      contamination_check: passed
+      mixture_weight: 1.0
+  method:
+    family: sft
+    framework: transformers 4.57.3 Trainer (Gemma3ForConditionalGeneration, flash_attention_2)
+    peft: none
+    hyperparams:
+      lr: 2.0e-05
+      epochs: 1.0
+      batch_size: 1
+      grad_accum: 6
+      max_seq_len: 8192
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.0
+      precision: bf16
+      seed: 1
+      other: >-
+        identical to exp-01; epochs, seed, warmup_ratio, batch size 1, ROW_LEN
+        8192, cosine, weight_decay 0.0, adamw_bnb_8bit come from train_sft.py
+        defaults/constants and were not overridden. Only change vs exp-01: the
+        packing routine, rewritten at [27751] (heap-based) and again at [29053]
+        (bisect over free capacities) before this launch.
+    target_format: >-
+      chat template templates/gemma3.jinja; assistant turn =
+      "<reasoning>\n\nANSWER: <number><end_of_turn>"
+  command:
+    argv: [python, train_sft.py, --data, data/sft_round1.jsonl, --out, ckpts/sft_r1, --accum, "6", --lr, 2e-5, --save-steps, "800"]
+    cwd: /home/ben/task
+    script: /home/ben/task/train_sft.py
+    env: {}
+    log: /home/ben/task/runs/train_r1.log
+  budget:
+    gpu: "1x H100 80GB"
+    planned_h: null
+
+evaluation:
+  protocol:
+    command: []
+    dev_set: null
+    n: null
+    seed: null
+  comparator:
+    ref: base_model
+    value: 0.08
+    path: /home/ben/task/runs/baseline_50.json
+  diagnostic:
+    what: null
+    command: []
+    path: null
+
+result:
+  execution: killed
+  wall_h: 0.37
+  output_checkpoint: null
+  training_summary:
+    final_loss: null
+    steps: null
+    notes: >-
+      killed with SIGKILL at [31942] after ~22 minutes; the process was stuck in
+      datasets-library overhead during tokenisation/packing and could not be
+      inspected (ptrace blocked)
+  measurements: []
+  diagnostic_result: {value: null, path: null, notes: null}
+  watch_set_result: null
+  failure: null
+
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: >-
+    The packing fix was not the binding constraint: the run still never reached
+    training, this time stalling in the datasets library [31941]. Killed with no
+    checkpoint and no measurement.
+  decision: abandon_line
+  next_step: >-
+    Rewrite the data path without the datasets library - pure-python batched
+    tokenisation into numpy arrays with a torch Dataset - and relaunch (exp-03).
+
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-27c73665
+  launch_i: 29086
+  stated_by_agent:
+    problem: true
+    hypothesis: false
+  anchors:
+    problem: [27747, 27748]
+    setup: [27751, 29053, 29086]
+    evaluation: []
+    result: [31941, 31942, 31943]
+    conclusion: [31941]
+  snapshot_files:
+    - datagen.py
+    - train_sft.py
+  smoke_runs: []
+  extractor: claude-opus-5
+  unresolved:
+    - "the stream does not say how far tokenisation had got before the kill; no packing or step statistics were printed"
+    - "this launch ran the packing-patched pre-rewrite train_sft.py ([27751], [29053]); task/train_sft.py holds the later rewritten version"

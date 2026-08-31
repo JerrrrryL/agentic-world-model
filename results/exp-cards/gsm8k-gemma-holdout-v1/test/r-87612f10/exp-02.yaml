@@ -1,0 +1,217 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-02
+created_at: null
+elapsed_h: null
+problem:
+  statement: '"The adapter path is clearly suboptimal: about 44% on a 25-sample official slice and 51% on the
+    held-out dev split." [229] The agent adds that "the error file shows genuine reasoning mistakes, not just
+    answer-format failures" [213], i.e. the remaining gap is capacity, not formatting.'
+  evidence:
+  - path: '{dir}/exp_lora_e3_lr1e4_eval25.json'
+    locator: '[227], [229]'
+    observation: exp-01 scores accuracy 0.440 on the 25-sample official slice
+  - path: '{dir}/exp_lora_e3_lr1e4_dev.txt'
+    locator: '[209], [213]; rows with correct=0'
+    observation: exp-01 scores dev_accuracy 0.5117 on the 256-item held-out split, and its misses are wrong numbers
+      rather than missing ANSWER lines
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+hypothesis:
+  claim: '"switching to full fine-tuning of the text stack now, keeping the same data formatting but giving the
+    model enough capacity to actually learn the arithmetic patterns rather than just the response format" [229].'
+  mechanism: A 132M-parameter adapter can learn the response format but not new arithmetic behaviour; updating
+    all 3.88B text-stack parameters on the same data gives the model room to change how it computes, not just
+    how it answers ([229], [250]).
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: exp-01
+    magnitude: '"beat the adapter by a healthy margin" [266] - no number given'
+  falsified_if: '"If it doesn''t move the dev score materially above the adapter baseline, I''m prepared to treat
+    the fixed benchmark prompt as the main remaining problem and train directly on that longer context" [265].'
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+  - path: null
+    source: 'openai/gsm8k (config: main, split: train)'
+    n_examples: 7207
+    built_by: '{dir}/gsm8k_pipeline.py'
+    build_command: []
+    selection: identical to exp-01 - build_train_dev_split removes the 10 official few-shot questions, shuffles
+      with split_seed 1234 and holds out the first 256 rows as dev (7473 - 10 - 256 = 7207 from the script text);
+      678 steps for 3 epochs at an effective batch of 32 confirms the same split. Sequences truncated at --max-length
+      768.
+    contamination_check: not_run
+    mixture_weight: null
+  method:
+    family: sft
+    framework: transformers 4.57.3 Trainer, torch 2.8.0+cu129 (versions printed at [31])
+    peft: none
+    hyperparams:
+      lr: 2.0e-05
+      epochs: 3.0
+      batch_size: 4
+      grad_accum: 8
+      max_seq_len: 768
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.01
+      precision: bf16
+      seed: null
+      other: 'lr / epochs / batch_size / grad_accum / max_seq_len / mode=full / logging_steps=20 are explicit
+        on the launch argv at [230]. scheduler (cosine), warmup_ratio 0.03, weight_decay 0.01, bf16, optim adamw_bnb_8bit,
+        max_grad_norm 1.0, gradient_checkpointing, save_strategy="epoch", save_total_limit=2 and split_seed 1234
+        are argparse / TrainingArguments defaults read from {dir}/train_gsm8k.py that this launch did not override.
+        No training seed is set anywhere in the script, so `seed` is null; 1234 is only the data-split seed. The
+        vision tower and multimodal projector are frozen (freeze_non_text_modules). The base model name google/gemma-3-4b-pt
+        is also a script default this launch did not override. Only the text stack trains: the smoke run at [138]
+        measured trainable_parameters=3880263168 of 4300079472 [140]. This launch also carries the export fix
+        announced at [218], so its checkpoint saves the base processor files vLLM needs.'
+    target_format: 'identical to exp-01 - templates/gemma3.jinja, user turn = the evaluator''s problem wording,
+      assistant turn = GSM8K rationale + blank line + "ANSWER: <n>", loss on the assistant tokens only, no system
+      turn.'
+  command:
+    argv:
+    - python
+    - train_gsm8k.py
+    - --output-dir
+    - exp_full_e3_lr2e5
+    - --mode
+    - full
+    - --epochs
+    - '3'
+    - --batch-size
+    - '4'
+    - --grad-accum
+    - '8'
+    - --max-length
+    - '768'
+    - --learning-rate
+    - 2e-5
+    - --logging-steps
+    - '20'
+    cwd: '{dir}'
+    script: '{dir}/train_gsm8k.py'
+    env: {}
+    log: null
+  budget:
+    gpu: 1x H100 (run header; no nvidia-smi output appears in the stream)
+    planned_h: null
+evaluation:
+  protocol:
+    command:
+    - python
+    - dev_eval.py
+    - --model-path
+    - exp_full_e3_lr2e5
+    - --dev-size
+    - '256'
+    - --batch-size
+    - '8'
+    - --max-new-tokens
+    - '512'
+    - --output-file
+    - exp_full_e3_lr2e5_dev.txt
+    dev_set: 'dev_eval.py held-out split: the 256 GSM8K-train rows build_train_dev_split reserves with split_seed
+      1234, decoded greedily under the evaluator''s 10-shot system prompt and scored with inspect_ai match_str(location="end",
+      numeric=True)'
+    n: 256
+    seed: 1234
+  comparator:
+    ref: exp-01
+    value: 0.5117
+    path: '{dir}/exp_lora_e3_lr1e4_dev.txt'
+  diagnostic:
+    what: null
+    command: []
+    path: null
+result:
+  execution: completed
+  wall_h: 0.36
+  output_checkpoint: '{dir}/exp_full_e3_lr2e5'
+  training_summary:
+    final_loss: 0.1595
+    steps: 678
+    notes: 678 steps / 3 epochs, train_runtime 1286.21 s, train_loss 0.2784, last logged step loss 0.1595 at epoch
+      2.92 [286]; the agent read it as "finished cleanly in about 21.5 minutes and ended around 0.16 loss in the
+      final epoch, materially below the adapter" [288].
+  measurements:
+  - metric: accuracy
+    value: 0.5273
+    n: 256
+    path: '{dir}/exp_full_e3_lr2e5_dev.txt'
+    delta_vs_comparator: 0.0156
+  - metric: accuracy
+    value: 0.24
+    n: 25
+    path: '{dir}/exp_full_e3_lr2e5_eval25.json'
+    delta_vs_comparator: null
+  diagnostic_result:
+    value: null
+    path: null
+    notes: null
+  watch_set_result: null
+  failure: null
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: 'Full fine-tuning cut training loss well below the adapter (0.16 vs 0.22) but moved the held-out dev
+    score only from 0.5117 to 0.5273 - +1.6 pts on 256 items, inside the noise of that slice - and the agent read
+    the pair as a ceiling: "The direct GSM8K-only path looks like it''s plateauing in the low-50s on held-out
+    accuracy, even with full fine-tuning" [311]. It stayed the best clean baseline and later became the parent
+    of the prompt-matched polish.'
+  decision: adopt
+  next_step: '"wiring in a second-stage curriculum on meta-math/MetaMathQA filtered to its GSM-derived subset
+    before returning to GSM8K" [311] - carried out as exp-03; the prompt-matched polish on this checkpoint ([256],
+    [535]) was held in reserve and became exp-05.'
+outcome:
+  official_accuracy: null
+provenance:
+  kind: extracted
+  run_ref: r-87612f10
+  launch_i: 230
+  stated_by_agent:
+    problem: true
+    hypothesis: true
+  anchors:
+    problem:
+    - 213
+    - 227
+    - 229
+    setup:
+    - 218
+    - 229
+    - 230
+    evaluation:
+    - 289
+    - 701
+    result:
+    - 286
+    - 288
+    - 293
+    - 703
+    conclusion:
+    - 311
+    - 705
+  snapshot_files:
+  - train_gsm8k.py
+  - gsm8k_pipeline.py
+  - dev_eval.py
+  - exp_full_e3_lr2e5_dev.txt
+  - exp_full_e3_lr2e5_eval25.json
+  - exp_lora_e3_lr1e4_dev.txt
+  smoke_runs: []
+  extractor: claude-opus-5
+  unresolved:
+  - 'The two official 25-sample numbers on this run are not comparable to each other: exp-01 was scored at [226]
+    with --max-tokens 512, while this checkpoint was scored at [701] with the evaluate.py default of 4000 (the
+    agent discovered that default only at [643]). 0.240 here versus 0.440 for exp-01 therefore measures two different
+    decode budgets, and the agent never re-scored exp-01 at 4000 - it reasons from the two as if they were one
+    series at [705].'
+  - The official 0.240 measurement was taken much later ([701], after exp-05 finished training), not as part of
+    this launch's own evaluation; when this checkpoint was chosen as the best clean baseline only the dev number
+    existed.

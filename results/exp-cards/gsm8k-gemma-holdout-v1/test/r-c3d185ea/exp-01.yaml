@@ -1,0 +1,178 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-01
+created_at: null
+elapsed_h: 0.27
+
+problem:
+  statement: >-
+    The base model scores 0.000 on the benchmark: instead of solving the problem
+    and ending with "ANSWER: $ANSWER" it emits template boilerplate. The agent's
+    words: "Base model produces garbage. I need SFT." [71]
+  evidence:
+    - path: /home/ben/task/baseline_30.json
+      locator: "[62], [63]; whole file"
+      observation: 'accuracy 0.000, stderr 0.000 on a 30-sample run of the base model'
+    - path: data/exp-cards/gsm8k-gemma-holdout-v1/digests/r-c3d185ea.md
+      locator: "[65], [69]"
+      observation: >-
+        the agent printed one baseline completion: no reasoning at all, only
+        repeated "<code>ANSWER: $ANSWER</code>" template fragments
+  affected_share: 1.0
+  failure_examples:
+    - id: "baseline_30, sample printed first at [69]"
+      source: data/exp-cards/gsm8k-gemma-holdout-v1/digests/r-c3d185ea.md
+      question: "He runs 60 meters each sprint.  How many total meters does he run a week?"
+      gold: "540"
+      model_output: '模板语言 / 解答模板 / 1. <code>ANSWER: $ANSWER</code> / Explanation / 模板名称:解答模板 (repeated)'
+      failure: "no arithmetic attempted; the model echoes the format instruction as a document template"
+  watch_set: null
+
+hypothesis:
+  claim: >-
+    Full supervised fine-tuning of the base model on GSM8K-train plus the GSM
+    subset of MetaMathQA, with every response rewritten to end in "ANSWER: X",
+    will make the model produce step-by-step solutions in the eval's answer
+    format instead of boilerplate.
+  mechanism: >-
+    The base checkpoint is a pure pretrained model with no instruction
+    following; SFT on question/solution pairs shaped exactly like the eval
+    prompt teaches both the task and the output contract [71], [96].
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: base_model
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+    - path: /home/ben/task/sft_data
+      source: "derived: openai/gsm8k (train) + meta-math/MetaMathQA (GSM_AnsAug, GSM_Rephrased)"
+      n_examples: 72419
+      built_by: /home/ben/task/prepare_data.py
+      build_command: [python, prepare_data.py]
+      selection: >-
+        GSM8K train split at the "####" marker into reasoning + final answer, <<...>>
+        calculator annotations stripped, response rewritten as "reasoning\n\nANSWER: X";
+        25000 each of MetaMathQA GSM_AnsAug and GSM_Rephrased (random.Random(42) shuffle),
+        "The answer is: X" rewritten to "ANSWER: X"; GSM8K part repeated 3x, whole set shuffled [99], [100]
+      repeats: "GSM8K train x3 (7473 -> 22419); MetaMathQA GSM x1 (50000)"
+      contamination_check: not_run
+      mixture_weight: 1.0
+  method:
+    family: sft
+    framework: "transformers 4.57.3 Trainer (Gemma3ForCausalLM), torch 2.8.0+cu129"
+    peft: none
+    hyperparams:
+      lr: 2.0e-05
+      epochs: 1.0
+      batch_size: 32
+      grad_accum: 1
+      max_seq_len: 640
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: null
+      precision: bf16
+      seed: null
+      other: >-
+        save_steps=500 from the command line. scheduler=cosine, warmup_ratio=0.03,
+        bf16=True, optim=adamw_bnb_8bit, gradient_checkpointing=True,
+        max_grad_norm=1.0, logging_steps=20 are train_sft.py defaults/constants
+        that this launch did not override (script text at [102]). weight_decay and
+        seed are never set by the script or the launch.
+    target_format: >-
+      "<bos><start_of_turn>user\n{eval prompt}<end_of_turn>\n<start_of_turn>model\n{reasoning}\n\nANSWER: X<end_of_turn>\n";
+      loss masked over the prompt span
+  command:
+    argv: [nohup, python, train_sft.py, --batch-size, "32", --grad-accum, "1", --epochs, "1",
+           --max-length, "640", --lr, "2e-5", --save-steps, "500", --output-dir, /home/ben/task/sft_out]
+    cwd: /home/ben/task
+    script: /home/ben/task/train_sft.py
+    env: {}
+    log: /home/ben/task/sft_train.log
+  budget:
+    gpu: "1x NVIDIA H100 80GB HBM3"
+    planned_h: null
+
+evaluation:
+  protocol:
+    command: []
+    dev_set: null
+    n: null
+    seed: null
+  comparator:
+    ref: base_model
+    value: 0.0
+    path: /home/ben/task/baseline_30.json
+  diagnostic:
+    what: null
+    command: []
+    path: null
+
+result:
+  execution: failed
+  wall_h: 0.03
+  duration_h: 0.03
+  steps: null
+  output_checkpoint: null
+  training_summary:
+    final_loss: null
+    steps: null
+    notes: >-
+      No loss line ever reached sft_train.log. Two minutes later the agent
+      relaunched the same recipe at batch 16 / grad-accum 2 [132], and its own
+      environment note records "batch=32 OOMs during training" [154].
+  measurements: []
+  diagnostic_result: {value: null, path: null, notes: null}
+  watch_set_result: null
+  failure: >-
+    CUDA out of memory at batch 32 / max_length 640. The traceback itself is not
+    in the stream; the OOM is stated in the agent's own note at [154].
+
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: >-
+    The first full-data SFT launch died on memory before producing a checkpoint,
+    so the SFT hypothesis was not tested here. The 200-sample throughput probe at
+    batch 32 [120] had passed, but the probe never reached the memory pressure of
+    a full-length run.
+  decision: abandon_line
+  next_step: "Relaunch the identical recipe at batch 16 / grad-accum 2 [132]."
+
+# ---- joined by the pipeline, never written by the extractor ----
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-c3d185ea
+  launch_i: 127
+  stated_by_agent:
+    problem: true
+    hypothesis: true
+  anchors:
+    problem: [62, 63, 65, 69, 71]
+    setup: [96, 99, 100, 102, 127]
+    evaluation: [62, 63]
+    result: [128, 132, 154]
+    conclusion: [132, 154]
+  snapshot_files:
+    - baseline_30.json
+    - prepare_data.py
+    - train_sft.py
+    - sft_train.log
+  smoke_runs:
+    - {launch_i: 104, outcome: "passed (32 samples, batch 2, grad-accum 2)"}
+    - {launch_i: 109, outcome: "passed (128 samples, batch 8, grad-accum 2, max_length 1024)"}
+    - {launch_i: 115, outcome: "passed (128 samples, batch 16, grad-accum 1, max_length 768)"}
+    - {launch_i: 120, outcome: "passed (200 samples, batch 32, grad-accum 1, max_length 640)"}
+  extractor: null            # model id omitted: no model names are written into these cards
+  unresolved:
+    - "sft_train.log was overwritten by the relaunch at [132]; no log of this launch survives in the workspace."
+    - "The OOM traceback for this launch is not in the digest; only the agent's later note [154] states batch 32 OOMs."
+    - "The workspace holds contamination_judgement.txt ('no contamination detected'), but the digest shows no contamination checker being run by the agent, so data contamination_check is recorded as not_run."

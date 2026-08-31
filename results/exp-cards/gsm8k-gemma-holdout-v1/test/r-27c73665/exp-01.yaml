@@ -1,0 +1,181 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-01
+created_at: null
+elapsed_h: 0.36
+
+problem:
+  statement: >-
+    The base model reasons through the problem but never stops: after emitting
+    "ANSWER: <n>" it keeps generating new invented problems, and the scorer takes
+    the last number in the completion, so the answer read off is wrong. Baseline
+    accuracy is 8% (limit 50).
+  evidence:
+    - path: /home/ben/task/runs/baseline_50.json
+      locator: "[15882]"
+      observation: "baseline eval of google/gemma-3-4b-pt: accuracy 0.08, stderr 0.039 (limit 50)"
+    - path: /home/ben/task/logs/2026-07-16T22-04-47+02-00_gsm8k_NoshmtHTFZAcpvzyCmy5eh.json
+      locator: "[15882], samples[1]"
+      observation: >-
+        completion answers the asked question correctly (540) then invents a new
+        problem; scored answer is '48' against target 540
+  affected_share: 0.92
+  failure_examples:
+    - id: null
+      source: /home/ben/task/logs/2026-07-16T22-04-47+02-00_gsm8k_NoshmtHTFZAcpvzyCmy5eh.json
+      question: "James runs 3 sprints ... (first line of the printed sample; full prompt not in the stream)"
+      gold: "540"
+      model_output: >-
+        "... Overall, in the span of three days, James runs 180 + 180 + 180 = 540
+        meters.\n\nANSWER: 540\n\nSolve the following math problem step by step.
+        ... The number of animals in a zoo has dropped by 150 ..."
+      failure: >-
+        correct answer given, then the model continues with a fresh invented
+        problem; last-number scoring picks up '48' instead of 540
+  watch_set: null
+
+hypothesis:
+  claim: >-
+    Full supervised fine-tuning on 167k math problems reformatted to the exact
+    eval prompt/answer contract (reasoning, then "ANSWER: <n>", then
+    <end_of_turn>) will make the model stop after the answer and raise accuracy
+    over the 8% base model.
+  mechanism: >-
+    The failure is a formatting/stopping failure, not a reasoning failure; training
+    the assistant turn to end with the ANSWER line plus <end_of_turn> teaches the
+    stop token the scorer needs.
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: base_model
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: google/gemma-3-4b-pt
+    origin: base_model
+    hash: null
+  data:
+    - path: /home/ben/task/data/sft_round1.jsonl
+      source: "openai/gsm8k train + meta-math/MetaMathQA (GSM_* types) + microsoft/orca-math-word-problems-200k"
+      n_examples: 167000
+      built_by: /home/ben/task/datagen.py
+      build_command: [python, datagen.py]
+      selection: >-
+        GSM8K train solutions with <<>> calculator annotations stripped; MetaMathQA
+        GSM_* responses split on "The answer is:"; Orca-Math answers with the final
+        number extracted and normalised; 8-gram (lowercased, punctuation-stripped)
+        overlap filter against all GSM8K test questions; question-level dedup;
+        ~12% of rows carry the exact eval 10-shot system prefix, ~5% a random
+        10-shot prefix, the rest no system message. n_examples is the agent's own
+        "167k examples built" [17401]; the exact count print was filtered out of
+        the stream.
+      contamination_check: passed
+      mixture_weight: 1.0
+  method:
+    family: sft
+    framework: transformers 4.57.3 Trainer (Gemma3ForConditionalGeneration, flash_attention_2)
+    peft: none
+    hyperparams:
+      lr: 2.0e-05
+      epochs: 1.0
+      batch_size: 1
+      grad_accum: 6
+      max_seq_len: 8192
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.0
+      precision: bf16
+      seed: 1
+      other: >-
+        epochs, seed, warmup_ratio, per_device_train_batch_size=1, ROW_LEN=8192,
+        cosine schedule, weight_decay=0.0, optim=adamw_bnb_8bit, save_only_model
+        and gradient checkpointing are train_sft.py defaults/constants, not
+        overridden on this launch (script text in task/train_sft.py; this launch
+        ran the pre-rewrite version shown at [20658]). Vision tower and
+        multi-modal projector frozen; loss on assistant tokens only; sequences
+        packed to 8192-token rows with position_ids resets (FA2 varlen).
+    target_format: >-
+      chat template templates/gemma3.jinja; assistant turn =
+      "<reasoning>\n\nANSWER: <number><end_of_turn>"
+  command:
+    argv: [python, train_sft.py, --data, data/sft_round1.jsonl, --out, ckpts/sft_r1, --accum, "6", --lr, 2e-5, --save-steps, "800"]
+    cwd: /home/ben/task
+    script: /home/ben/task/train_sft.py
+    env: {}
+    log: /home/ben/task/runs/train_r1.log
+  budget:
+    gpu: "1x H100 80GB"
+    planned_h: null
+
+evaluation:
+  protocol:
+    command: []
+    dev_set: null
+    n: null
+    seed: null
+  comparator:
+    ref: base_model
+    value: 0.08
+    path: /home/ben/task/runs/baseline_50.json
+  diagnostic:
+    what: null
+    command: []
+    path: null
+
+result:
+  execution: killed
+  wall_h: 0.06
+  output_checkpoint: null
+  training_summary:
+    final_loss: null
+    steps: null
+    notes: >-
+      killed before the first optimizer step: the offline first-fit packing loop
+      is O(n x bins) in pure Python and had not finished binning 167k documents
+      [27747]
+  measurements: []
+  diagnostic_result: {value: null, path: null, notes: null}
+  watch_set_result: null
+  failure: null
+
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: >-
+    Killed at [27748] after ~4 minutes because the sequence-packing loop was too
+    slow to reach training; no checkpoint and no measurement. Says nothing about
+    the hypothesis.
+  decision: abandon_line
+  next_step: >-
+    Replace first-fit packing with a best-fit-decreasing search over free
+    capacities and relaunch the identical training (exp-02).
+
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-27c73665
+  launch_i: 24351
+  stated_by_agent:
+    problem: true
+    hypothesis: false
+  anchors:
+    problem: [15882, 17332]
+    setup: [17338, 17341, 20658, 24351]
+    evaluation: [6393, 15882]
+    result: [27747, 27748]
+    conclusion: [27747]
+  snapshot_files:
+    - datagen.py
+    - train_sft.py
+    - evaluate.py
+  smoke_runs:
+    - {launch_i: 21210, outcome: "passed: 40 steps on 2k examples, loss -> 0.30"}
+    - {launch_i: 22674, outcome: "crashed: vLLM server failed to start on the smoke checkpoint (missing processor/tokenizer configs)"}
+    - {launch_i: 23620, outcome: "passed: smoke checkpoint 62.5% at limit 8, all 8 completions stopped with an ANSWER line"}
+  extractor: claude-opus-5
+  unresolved:
+    - "the exact round-1 example count and packing statistics were filtered out of the stream; 167k / 110.6M tokens are the agent's own reported figures ([17401], RESULTS.md)"
+    - "this launch ran the version of train_sft.py written at [20658]; task/train_sft.py holds the later rewritten version"

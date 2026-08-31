@@ -1,0 +1,183 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-05
+created_at: null
+elapsed_h: 6.37
+
+problem:
+  statement: >-
+    "v2 is reliably 70.7% greedy (stderr 2.6%, consistent across 150 & 300
+    samples)" [644] while v3 collapsed to 20%, so v2 is the candidate to submit -
+    but it lives in runs/v2 with a sampling generation_config, and the graded
+    path reads a directory called final_model. It has to be packaged with the
+    greedy config and confirmed on the exact submission path.
+  evidence:
+    - path: /home/ben/task/logs/v2g_metrics.json
+      locator: "[608]"
+      observation: "v2 greedy 0.707 at --limit 150"
+    - path: /home/ben/task/logs/v2g300_metrics.json
+      locator: "[644]"
+      observation: "v2 greedy 0.707 again at --limit 300, stderr 2.6%"
+    - path: /home/ben/task/logs/v3g_metrics.json
+      locator: "[628], [820]"
+      observation: "v3 greedy 0.200 - the only later candidate at this point, and unusable"
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+
+hypothesis:
+  claim: >-
+    "Let me finalize it as final_model with the greedy generation_config, then
+    run a confirmatory eval on the exact submission path" [644] - final_model,
+    built as a copy of runs/v2 with do_sample=false, will score what
+    runs/v2_greedy scores.
+  mechanism: >-
+    The weights are copied byte-for-byte from runs/v2 (883 keys in both index
+    files [735]); only generation_config.json differs, and vLLM reads its
+    sampling defaults from there when the eval omits them [230].
+  expected_effect:
+    metric: accuracy
+    direction: null
+    against: exp-03
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: /home/ben/task/runs/v2
+    origin: exp-03
+    hash: null
+  data: []
+  method:
+    family: other
+    framework: "cp -r plus a hand-written generation_config.json"
+    peft: "none"
+    hyperparams:
+      lr: null
+      epochs: null
+      batch_size: null
+      grad_accum: null
+      max_seq_len: null
+      scheduler: null
+      warmup: null
+      weight_decay: null
+      precision: null
+      seed: null
+      other: >-
+        no training. runs/v2 is copied to final_model and its
+        generation_config.json replaced with do_sample=false, temperature=0.0,
+        top_k=1, top_p=1.0, eos_token_id=[1, 106], cache_implementation=hybrid -
+        i.e. the exp-02 greedy setting written directly rather than via
+        make_greedy.py. 8.1 GB, self-contained, including the tokenizer and the
+        preprocessor/processor files [663][820].
+    target_format: null
+  command:
+    argv:
+      - "rm -rf final_model"
+      - "cp -r runs/v2 final_model"
+      - "cat > final_model/generation_config.json <<'EOF'"
+    cwd: /home/ben/task
+    script: null
+    env: {}
+    log: null
+  budget:
+    gpu: "one NVIDIA H100 80GB HBM3"
+    planned_h: null
+
+evaluation:
+  protocol:
+    command: [python, evaluate.py, --model-path, final_model, --json-output-file, logs/finaldefault_metrics.json]
+    dev_set: >-
+      official; three runs - --limit 200 at [664], --limit 500 at [734], and the
+      default invocation at [801] (limit 150, max-connections 2,
+      gpu-memory-utilization 0.3), which the agent calls "the canonical grader
+      path"
+    n: 150
+    seed: null
+  comparator:
+    ref: exp-03
+    value: 0.707
+    path: /home/ben/task/logs/v2g_metrics.json
+  diagnostic:
+    what: "confirm final_model is byte-identical to runs/v2 and holds every file vLLM needs"
+    command: [python, -c, "compare model.safetensors.index.json weight_map key counts for final_model and runs/v2"]
+    path: null
+
+result:
+  execution: completed
+  wall_h: 0.06
+  duration_h: 0.06
+  steps: null
+  output_checkpoint: /home/ben/task/final_model
+  training_summary:
+    final_loss: null
+    steps: null
+    notes: >-
+      No training - the exp-03 weights copied unchanged. wall_h covers the copy
+      only ([645] t=+6.37h to [663] t=+6.43h); the confirmatory evals ran after.
+  measurements:
+    - metric: accuracy
+      value: 0.695
+      n: 200
+      path: /home/ben/task/logs/final_metrics.json
+      delta_vs_comparator: null
+    - metric: accuracy
+      value: 0.702
+      n: 500
+      path: /home/ben/task/logs/final500_metrics.json
+      delta_vs_comparator: null
+    - metric: accuracy
+      value: 0.693
+      n: 150
+      path: /home/ben/task/logs/finaldefault_metrics.json
+      delta_vs_comparator: -0.0140
+  diagnostic_result:
+    value: null
+    path: null
+    notes: >-
+      Both final_model and runs/v2 report 883 weight-map keys [735]; the config
+      check at [801] confirms Gemma3ForConditionalGeneration, do_sample False,
+      eos [1, 106], both processor files and both safetensors shards present.
+  watch_set_result: null
+  failure: null
+
+conclusion:
+  verdict: supported
+  mechanism_verdict: not_tested
+  summary: >-
+    Packaging v2 as final_model with a greedy generation_config reproduced v2's
+    score: 0.693 on the default grader invocation at --limit 150 against
+    runs/v2_greedy's 0.707 on the same limit, with 0.695 at 200 and 0.702 at 500.
+    Five reads spanning 150-500 samples land at 69-71%, and this is the artifact
+    the run leaves behind as its submission.
+  decision: adopt
+  next_step: >-
+    "I have 3:30 left and a safe fallback, so let me attempt one improvement: v4
+    = larger diverse MetaMath (no rejection data, which broke v3) trained 1
+    epoch" [678] - final_model is only to be replaced if a later candidate
+    clearly wins.
+
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-6b7e26ac
+  launch_i: 645
+  stated_by_agent:
+    problem: true
+    hypothesis: true
+  anchors:
+    problem: [628, 632, 644]
+    setup: [645, 651, 657]
+    evaluation: [664, 734, 801]
+    result: [663, 675, 735, 747, 802, 818, 820]
+    conclusion: [678, 818]
+  snapshot_files:
+    - evaluate.py
+    - make_greedy.py
+  smoke_runs: []
+  extractor: null
+  unresolved:
+    - "the stream ends with final_model still holding the exp-03 weights; nothing after [645] overwrites it, and the agent re-verifies its contents at [819], so this is the submitted checkpoint - but the digest carries no independent confirmation of what was graded"
+    - "logs/ is not in the workspace snapshot, so none of the three final measurements can be re-read from task/"
+    - "the 0.693 default-invocation figure is stated by the agent at [818]; the metrics-file event itself is not in the digest, though the [820] roll-up lists logs/finaldefault_metrics.json at 69.3%"

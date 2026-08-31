@@ -1,0 +1,199 @@
+schema_version: awm-experiment-card-v1
+card_id: exp-05
+created_at: null
+elapsed_h: 3.86
+
+problem:
+  statement: null
+  evidence: []
+  affected_share: null
+  failure_examples: []
+  watch_set: null
+
+hypothesis:
+  claim: >-
+    [384] "the disjoint diversity pass from it: 140,000 previously unseen
+    GSM8K-train-derived MetaMath variants, full language-model tuning at 5e-6,
+    and a midpoint checkpoint for rollback." [450] "This experiment deliberately
+    uses only the 140,000 MetaMath rows excluded from the earlier 100,000-row
+    pass, so the added supervision is genuinely new while remaining traceable to
+    GSM8K's training split."
+  mechanism: >-
+    Repeating epochs over the same 7,473 clean examples has stopped paying; the
+    entire remaining GSM-derived MetaMath pool is supervision the model has never
+    seen, so broader coverage of paraphrase and answer-augmentation variants
+    should add reasoning breadth that a further alignment epoch cannot.
+  expected_effect:
+    metric: accuracy
+    direction: higher
+    against: exp-03
+    magnitude: null
+  falsified_if: null
+
+setup:
+  parent_checkpoint:
+    path: /home/ben/task/aligned2_model
+    origin: exp-03
+    hash: null
+  data:
+    - path: null
+      source: "meta-math/MetaMathQA (GSM_* rows only), built in-process by the trainer"
+      n_examples: 140000
+      built_by: /home/ben/task/train_sft.py
+      build_command:
+        - python
+        - train_sft.py
+        - --stage
+        - metamath
+        - --num-samples
+        - "140000"
+        - --metamath-offset
+        - "100000"
+        - --seed
+        - "42"
+      selection: >-
+        build_metamath_dataset() with sample_offset=100000: the same seed-42
+        stratified per-type orderings as exp-01, skipped past the rows exp-01
+        consumed, then the requested count re-allocated across the remaining
+        capacity. With offset 100k this is exactly the unused 140k GSM rows -
+        disjoint from stage one and covering the whole remaining pool.
+      contamination_check: passed
+      mixture_weight: 1.0
+      repeats: 1
+  method:
+    family: sft
+    framework: "transformers.Trainer (Gemma3ForConditionalGeneration, flash_attention_2); transformers 4.57.3"
+    peft: none
+    hyperparams:
+      lr: 5.0e-06
+      epochs: 1
+      batch_size: 16
+      grad_accum: 1
+      max_seq_len: 1024
+      scheduler: cosine
+      warmup: 0.03
+      weight_decay: 0.0
+      precision: bf16
+      seed: 42
+      other: >-
+        scheduler/weight_decay/precision/optimizer from train_sft.py's fixed
+        TrainingArguments (cosine, weight_decay=0.0, bf16, tf32,
+        gradient_checkpointing, adamw_torch_fused, max_grad_norm=1.0).
+        --save-steps 4375 wrote a half-dose checkpoint at step 4375 of 8750,
+        deliberately kept as a rollback / dose-ablation point.
+    target_format: >-
+      gemma3.jinja single-user-turn rendering; completion = normalised MetaMath
+      reasoning + "\n\nANSWER: <n><end_of_turn>". Note this drops the evaluator's
+      ten-shot prefix that exp-02 trained in, so an alignment recovery pass is
+      required before the result can be scored.
+  command:
+    argv:
+      - python
+      - train_sft.py
+      - --stage
+      - metamath
+      - --model
+      - aligned2_model
+      - --output
+      - diverse_model
+      - --num-samples
+      - "140000"
+      - --metamath-offset
+      - "100000"
+      - --max-length
+      - "1024"
+      - --batch-size
+      - "16"
+      - --gradient-accumulation
+      - "1"
+      - --epochs
+      - "1"
+      - --learning-rate
+      - "5e-6"
+      - --warmup-ratio
+      - "0.03"
+      - --logging-steps
+      - "100"
+      - --save-steps
+      - "4375"
+      - --seed
+      - "42"
+    cwd: /home/ben/task
+    script: /home/ben/task/train_sft.py
+    env: {HF_HUB_OFFLINE: "1", HF_DATASETS_OFFLINE: "1"}
+    log: null
+  budget:
+    gpu: "1x NVIDIA H100 80GB (81,559 MiB total)"
+    planned_h: null
+
+evaluation:
+  protocol:
+    command: []
+    dev_set: null
+    n: null
+    seed: null
+  comparator:
+    ref: null
+    value: null
+    path: null
+  diagnostic:
+    what: null
+    command: []
+    path: null
+
+result:
+  execution: completed
+  wall_h: 2.17
+  output_checkpoint: /home/ben/task/diverse_model
+  training_summary:
+    final_loss: 0.1174
+    steps: 8750
+    notes: >-
+      [558] "The 140,000-example endpoint completed successfully: train loss
+      0.1174, 7,807 seconds, 1.12 steps/s, peak allocated GPU memory 57.6 GiB."
+      The half-dose checkpoint /home/ben/task/diverse_model/checkpoint-4375 was
+      written at step 4375 and verified self-contained (8.1 GB) at [473]/[475];
+      it is the parent of exp-07.
+  measurements: []
+  diagnostic_result: {value: null, path: null, notes: null}
+  watch_set_result: null
+  failure: null
+
+conclusion:
+  verdict: inconclusive
+  mechanism_verdict: not_tested
+  summary: >-
+    The pass trained cleanly to a 0.1174 loss over the whole remaining GSM-derived
+    MetaMath pool, but the endpoint was never scored on its own: losing the
+    evaluator's ten-shot format meant every candidate had to go through an
+    alignment recovery epoch first (exp-06 for the full dose, exp-07 for the
+    half dose). Judgement of the diversity idea therefore lives on those cards.
+  decision: adopt
+  next_step: >-
+    One exact-evaluator-format recovery epoch on the full-dose endpoint before
+    measuring held-out accuracy [558], then the same recovery on the half-dose
+    checkpoint so the diversity dose is the only changed variable [611].
+
+outcome:
+  official_accuracy: null
+
+provenance:
+  kind: extracted
+  run_ref: r-11ba81b6
+  launch_i: 385
+  stated_by_agent:
+    problem: false
+    hypothesis: true
+  anchors:
+    problem: []
+    setup: [384, 385, 387, 450]
+    evaluation: []
+    result: [473, 474, 475, 558]
+    conclusion: [558, 611]
+  snapshot_files:
+    - train_sft.py
+  smoke_runs: []
+  extractor: claude-opus-5[1m]
+  unresolved:
+    - "The agent launched this pass without stating what was wrong with the incumbent; only the intervention and its rationale are in the stream, so problem.statement is left null."
+    - "diverse_model itself was never evaluated; the intermediate 50% checkpoint (checkpoint-4375) is judged only via exp-07."

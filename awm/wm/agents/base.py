@@ -17,6 +17,7 @@ class Brief:
     precedents: list[dict[str, Any]] = field(default_factory=list)
     prediction: dict[str, Any] | None = None
     objections: list[dict[str, Any]] = field(default_factory=list)  # {field, severity: blocking|advisory, fix}
+    evidence: list[dict[str, Any]] = field(default_factory=list)    # agent-supplied {path, locator, observation}
     summary: str = ""
 
 

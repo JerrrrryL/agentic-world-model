@@ -62,6 +62,11 @@ def default_config(session_dir: Path, arm: str = "null") -> dict[str, Any]:
         "submission": str(session_dir / "submission"),
         "submission_mode": "symlink",   # or "copy": adopt copies the sealed checkpoint into `submission`
         "memory_sides": ["train"],      # which split sides the agent may retrieve from
+        "prior_runs_root": None,        # raw prior runs the llm/traj arms may read (e.g. /home/ben/prior_runs)
+        "wma_backend": "claude-cli",    # llm/traj arms: claude-cli | fake
+        "wma_model": "claude-opus-4-8",  # the agent's own model; fixed across cells
+        "wma_call_timeout_s": 900,
+        "wma_max_turns": 40,
         "official_argv": None,      # default: python evaluate.py --model-path {checkpoint} --limit {n} --json-output-file {out}/metrics.json
         "official_cwd": None,       # default: the session dir
         "custom_argv": None,        # default: python -m awm.wm.score_items ...
@@ -102,6 +107,7 @@ class Session:
                              arm=self.config["arm"], split_side=self.config.get("split_side", "train"),
                              readonly=bool(self.config.get("memory_readonly")),
                              visible_sides=tuple(self.config.get("memory_sides") or ["train"]))
+        self.config["_session_dir"] = str(self.dir)
         self.agent = make_agent(self.config["arm"])
 
     # ------------------------------------------------------------ init
@@ -223,6 +229,10 @@ class Session:
         for o in brief.objections:
             evidence.append({"path": str(cdir / "card.yaml"), "locator": o.get("field"),
                              "observation": f"[{o.get('severity')}] {o.get('fix')}"})
+        agent_evidence = _lint_evidence(brief.evidence, self.dir, self.config.get("memory_root"), self.config.get("prior_runs_root"))
+        if len(agent_evidence) < len(brief.evidence):
+            self.ledger.append("lint", card_id=card_id, dropped=len(brief.evidence) - len(agent_evidence), where="brief")
+        evidence += agent_evidence
         options = [
             {"id": "accept", "label": "freeze the card and contract as proposed", "consequence": "parent is scored; you may launch"},
             {"id": "amend", "label": "submit a revised evaluation section (--amend FILE)", "consequence": f"new brief; {self.config['amend_limit'] - st['brief_rounds'] - 1} rounds left"},
@@ -518,7 +528,7 @@ class Session:
         card_id = st["card_id"]
         history = [self._load_obs(card_id, o["obs_id"]) for o in st["observations"][:-1]]
         advice: Advice = self.agent.on_observation(obs, history, contract, card, self.memory, self.config)
-        evidence = _lint_evidence(advice.evidence, self.dir, Path(self.config["memory_root"]))
+        evidence = _lint_evidence(advice.evidence, self.dir, self.config.get("memory_root"), self.config.get("prior_runs_root"))
         if len(evidence) < len(advice.evidence):
             self.ledger.append("lint", card_id=card_id, dropped=len(advice.evidence) - len(evidence))
         evidence = [{"path": str(self.card_dir(card_id) / "observations" / obs["obs_id"] / "observation.json"),
@@ -862,15 +872,16 @@ def _fire_rules(contract: dict[str, Any], observations: list[dict[str, Any]]) ->
     return fired
 
 
-def _lint_evidence(evidence: list[dict[str, Any]], session_dir: Path, memory_root: Path) -> list[dict[str, Any]]:
-    """Grounding lint: keep only evidence whose path exists under the session or memory."""
+def _lint_evidence(evidence: list[dict[str, Any]], *roots: Path | str | None) -> list[dict[str, Any]]:
+    """Grounding lint: keep only evidence whose path exists under one of the allowed roots."""
+    allowed = [Path(str(r)) for r in roots if r]
     kept = []
     for e in evidence:
         p = e.get("path")
         if not p:
             continue
         path = Path(str(p))
-        if path.exists() and (inside(path, session_dir) or inside(path, memory_root)):
+        if path.exists() and any(inside(path, r) for r in allowed):
             kept.append(e)
     return kept
 
