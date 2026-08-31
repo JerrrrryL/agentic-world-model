@@ -65,13 +65,12 @@ class LLMAgent(RetrievalAgent):
         else:
             brief = WorldModelAgent.on_proposal(self, card, grounding, memory, config)
         roots = self._roots(config)
-        if not roots.get("prior_runs") and "memory" not in self.sources:
-            brief.summary += " (no prior runs mounted; nothing for the agent to read)"
-            return brief
+        if "prior_runs" in self.sources and not roots.get("prior_runs"):
+            return _degrade(brief, f"prior_runs_root {config.get('prior_runs_root')!r} is not a directory", config)
         out = self._ask(config, self._brief_prompt(card, grounding, brief, roots, config), "brief")
         if not out:
-            brief.summary += " (agent call failed; deterministic brief)"
-            return brief
+            return _degrade(brief, self._last_error or "agent call returned nothing parsable", config)
+        brief.produced_by = "llm"
         if isinstance(out.get("summary"), str) and out["summary"].strip():
             brief.summary = out["summary"].strip()
         brief.objections = [o for o in out.get("objections") or [] if _valid_objection(o)]
@@ -89,9 +88,12 @@ class LLMAgent(RetrievalAgent):
             advice = Advice(kind="notice", summary=observation_summary(observation, contract),
                             evidence=observation_evidence(observation))
         roots = self._roots(config)
+        if "prior_runs" in self.sources and not roots.get("prior_runs"):
+            return _degrade(advice, f"prior_runs_root {config.get('prior_runs_root')!r} is not a directory", config)
         out = self._ask(config, self._obs_prompt(card, contract, observation, history, advice, roots, config), "observation")
         if not out:
-            return advice
+            return _degrade(advice, self._last_error or "agent call returned nothing parsable", config)
+        advice.produced_by = "llm"
         kind = out.get("kind")
         if kind in ("notice", "yield_request", "decision"):
             advice.kind = kind
@@ -152,8 +154,12 @@ class LLMAgent(RetrievalAgent):
     def _brief_prompt(self, card, grounding, brief, roots, config) -> str:
         sd = Path(config["_session_dir"])
         cdir = sd / "wm" / "cards" / card["card_id"]
-        pre = "\n".join(f"- {p['card_id']} (similarity {p['similarity']}): best-vs-parent {p['delta_best_vs_parent']}, "
-                        f"{p.get('decision')}, {p.get('raw_dir')}" for p in brief.precedents) or "- none"
+        if "memory" in self.sources:
+            pre = ("- memory precedents (deterministic top-k retrieval, k=" + str(config.get("retrieval_k", 5)) + "):\n"
+                   + ("\n".join(f"  - {p['card_id']} (similarity {p['similarity']}): best-vs-parent {p['delta_best_vs_parent']}, "
+                                 f"{p.get('decision')}, {p.get('raw_dir')}" for p in brief.precedents) or "  - none"))
+        else:
+            pre = "- memory: not a source for this arm"
         return f"""{self._preamble(roots, config)}
 
 ## Task: the brief
@@ -163,7 +169,6 @@ The scientist proposed experiment card `{card['card_id']}`:
 - proposed evaluation contract: `{cdir / 'contract.proposed.yaml'}`
 - base model: {card['setup'].get('base_model')} · method: {card['setup']['method'].get('family')} · data: {[d.get('source') for d in card['setup'].get('data', [])]}
 - claim: {card['hypothesis'].get('claim')}
-- memory precedents (deterministic retrieval):
 {pre}
 
 Read the card. Then look for prior runs that tried something like it on this base model: what recipe, what their own
@@ -208,7 +213,10 @@ Return:
 
     # ------------------------------------------------------------ backends
 
+    _last_error: str | None = None
+
     def _ask(self, config, prompt: str, kind: str) -> dict[str, Any] | None:
+        self._last_error = None
         backend = config.get("wma_backend", "claude-cli")
         log_dir = Path(config["_session_dir"]) / "wm" / "agent-calls"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -217,11 +225,16 @@ Return:
         if backend == "fake":
             canned = (config.get("wma_fake") or {}).get(kind)
             (log_dir / f"{stamp}.response.json").write_text(json.dumps(canned, indent=2))
+            if not isinstance(canned, dict):
+                self._last_error = "fake backend: no canned answer"
             return canned if isinstance(canned, dict) else None
         if backend != "claude-cli":
+            self._last_error = f"unknown wma_backend {backend!r}"
             return None
         text = self._claude_cli(config, prompt, log_dir / f"{stamp}.raw.json")
         out = parse_json_answer(text) if text else None
+        if text and not out:
+            self._last_error = "answer had no parsable JSON object"
         (log_dir / f"{stamp}.response.json").write_text(json.dumps(out, indent=2) if out else "null\n")
         return out
 
@@ -237,9 +250,11 @@ Return:
                                   timeout=float(config.get("wma_call_timeout_s", 900)), check=False)
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
             raw_path.write_text(json.dumps({"error": repr(exc)}))
+            self._last_error = f"claude call failed: {type(exc).__name__}"
             return None
         raw_path.write_text(proc.stdout or proc.stderr or "")
         if proc.returncode != 0:
+            self._last_error = f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout or '')[-200:].strip()}"
             return None
         try:
             payload = json.loads(proc.stdout)
@@ -253,6 +268,29 @@ class TrajAgent(LLMAgent):
 
     arm = "traj"
     sources = ("prior_runs",)
+
+
+# ---------------------------------------------------------------- degradation
+
+class AgentDegraded(RuntimeError):
+    """An autonomous arm could not produce its answer and wma_strict forbids falling back."""
+
+
+def _degrade(result, reason: str, config):
+    """Mark a deterministic fallback as such; in strict mode refuse instead.
+
+    The label of a study cell must equal what ran: a C2 cell whose agent
+    silently answered as the null arm is not a C2 cell. So every fallback is
+    stamped ``produced_by: deterministic`` + ``degraded: <reason>`` on the ping
+    and in the ledger, and ``wma_strict: true`` (the harness default for the
+    autonomous arms) turns a fallback into a hard error at the brief.
+    """
+    result.produced_by = "deterministic"
+    result.degraded = reason
+    result.summary = f"[agent degraded: {reason}] " + result.summary
+    if config.get("wma_strict") and isinstance(result, Brief):
+        raise AgentDegraded(reason)
+    return result
 
 
 # ---------------------------------------------------------------- parsing / validation

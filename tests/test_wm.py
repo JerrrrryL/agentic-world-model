@@ -352,3 +352,38 @@ def test_traj_arm_with_fake_backend_grounds_and_lints(tmp_path: Path) -> None:
     last = s.mailbox("exp-01").pings()[-1]
     assert last["kind"] == "notice" and last["prediction"]["delta_mean"] == pytest.approx(0.11)
     assert any(e["path"] == str(prior / "INDEX.md") for e in last["evidence"])
+
+
+def test_agent_degradation_is_recorded_and_strict_mode_refuses(tmp_path: Path) -> None:
+    prior = tmp_path / "prior_runs"; prior.mkdir(); (prior / "INDEX.md").write_text("x\n")
+    s, sd = make_session(tmp_path, parent_score=0.30, arm="traj")
+    s.config.update({"prior_runs_root": str(prior), "wma_backend": "fake", "wma_fake": {}})  # no canned answers -> fallback
+    brief = s.propose(write_card(sd))
+    assert brief["agent"]["produced_by"] == "deterministic" and "no canned answer" in brief["agent"]["degraded"]
+    assert brief["summary"].startswith("[agent degraded:")
+    assert brief["agent"]["arm"] == "traj" and brief["agent"]["sources"] == ["prior_runs"]
+    assert any(r["event"] == "agent_degraded" and r["where"] == "brief" for r in s.ledger.rows())
+    assert s.status()["cards"][0]["degraded_calls"] == 1
+    s.reply("exp-01/p-1", "accept")
+    assert s.checkpoint("exp-01", make_ckpt(sd, "exp-01", 250, 0.34), step=250) == HOOK_YIELD
+    s.run_worker("exp-01")
+    last = s.mailbox("exp-01").pings()[-1]
+    assert last["kind"] == "notice" and last["agent"]["produced_by"] == "deterministic" and last["agent"]["degraded"]
+    assert s.status("exp-01")["degraded_calls"] == 2
+
+    # strict: the brief refuses instead of falling back; the card stays a draft
+    s2, sd2 = make_session(tmp_path / "strict", parent_score=0.30, arm="traj")
+    s2.config.update({"prior_runs_root": str(tmp_path / "nope"), "wma_backend": "fake", "wma_strict": True})
+    with pytest.raises(WMError, match="wma_strict"):
+        s2.propose(write_card(sd2))
+    assert s2.status("exp-01")["status"] == "draft"
+    assert any(r["event"] == "agent_failed" for r in s2.ledger.rows())
+
+    # a healthy call is stamped llm, and the retrieval arm records its k
+    s3, sd3 = make_session(tmp_path / "ok", parent_score=0.30, arm="traj")
+    s3.config.update({"prior_runs_root": str(prior), "wma_backend": "fake",
+                      "wma_fake": {"brief": {"summary": "fine", "evidence": [], "prediction": None}}})
+    b3 = s3.propose(write_card(sd3))
+    assert b3["agent"]["produced_by"] == "llm" and b3["agent"]["degraded"] is None
+    s4, sd4 = make_session(tmp_path / "ret", parent_score=0.30, arm="retrieval")
+    assert s4.propose(write_card(sd4))["agent"]["retrieval_k"] == 5

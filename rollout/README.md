@@ -69,6 +69,15 @@ on `WMA_MODEL` (default `claude-opus-4-8`, baked in by `setup.sh`), fixed across
 scientist model is the only thing that varies along that axis; every call and its parsed
 answer is logged under `task/wm/agent-calls/`.
 
+**A cell's label must equal what ran.** Every ping carries `agent: {arm, sources, backend, model,
+retrieval_k, produced_by, degraded}`. If an autonomous call fails or does not parse, the ping is
+stamped `produced_by: deterministic` with the reason, the ledger gets `agent_degraded`, and
+`awm wm status` counts `degraded_calls` per card; `solve.sh` prints the count at the end.
+The autonomous arms run with `--wma-strict`, so a failure at the *brief* fails the proposal
+loudly rather than letting the cell continue as a null-arm cell under a C2 label. Arms that read
+memory (`retrieval`, `llm`) refuse to start without the memory bind; `traj` refuses without the
+prior-runs bind. When analysing, treat any cell with `degraded_calls > 0` as its own category.
+
 ### What comes back
 
 The usual PTB result directory per cell (`solve_out.txt` — the stream-json
