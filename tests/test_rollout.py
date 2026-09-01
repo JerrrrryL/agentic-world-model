@@ -54,7 +54,7 @@ def test_build_prompts_is_ptb_plus_sections() -> None:
     assert wm.startswith("intro `{model}`") and wm.endswith("2. {num_hours} hours\n")
     assert wm.count("## The world-model agent") == 1 and "## Prior runs" not in wm
     assert wm.index("## The world-model agent") < wm.index("## Rules")
-    assert "awm wm propose" in wm and "awm wm finalize" in wm and "memory/index.md" not in wm
+    assert "SendMessage" in wm and "consult" in wm.lower() and "memory/index.md" not in wm and "awm wm" not in wm
     wm_ft = bp.wm_prompt(ptb, fulltraj=True)
     assert wm_ft.index("## Prior runs") < wm_ft.index("## The world-model agent") < wm_ft.index("## Rules")
     c1 = bp.ptb_fulltraj(ptb)

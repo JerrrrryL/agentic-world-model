@@ -17,8 +17,8 @@ set -uo pipefail
 #   <agent>:<AGENT_CONFIG>
 #
 #   claude_fulltraj_noawm:claude-opus-4-8              C1  raw files, no WMA
-#   claude_wm:claude-opus-4-8:traj                     C2  raw files + autonomous WMA over them (PRIOR_RUNS set)
-#   claude_wm:claude-opus-4-8:retrieval:train,test     C3  WMA + seeded memory, no prior runs for this agent
+#   claude_wm:claude-opus-4-8:traj                     C2  raw files + WMA session over them (PRIOR_RUNS set)
+#   claude_wm:claude-opus-4-8:retrieval:train,test     C3  WMA session over extracted cards, no prior runs
 #
 # Environment (host side, read here and by run_task.sh):
 #   PTB_TASK, PTB_MODEL, PTB_NUM_HOURS        task, base model, hours     (gsm8k, google/gemma-3-4b-pt, 10)
@@ -92,7 +92,7 @@ for (( gpu=0; gpu<N; gpu++ )); do
     if [ -n "$PRIOR_RUNS" ] && [ "$wants_prior" = 1 ]; then binds+=("${PRIOR_RUNS}:/home/ben/prior_runs:ro"); fi
     if [ "$agent" = "claude_wm" ] && [ -n "$WM_MEMORY" ]; then
         mkdir -p "$WM_MEMORY"
-        case "$cfg" in *:ro) binds+=("${WM_MEMORY}:/home/ben/wm-memory:ro");; *) binds+=("${WM_MEMORY}:/home/ben/wm-memory");; esac
+        binds+=("${WM_MEMORY}:/home/ben/wm-memory:ro")   # the WMA reads memory; outcomes are collected from task/wm/ afterwards
     fi
     case "$agent" in
         claude_fulltraj_noawm) prompt="prompt_fulltraj";;

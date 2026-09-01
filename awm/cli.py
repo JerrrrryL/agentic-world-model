@@ -280,126 +280,188 @@ def _experiment_check(args: argparse.Namespace) -> int:
     return 1 if found else 0
 
 
-# ---------------------------------------------------------------- awm wm
+# ---------------------------------------------------------------- awm wm  (the world-model agent's toolbelt)
 
-def _wm_session(args: argparse.Namespace):
-    from awm.wm.runtime import Session
+def _wm_dir(args: argparse.Namespace) -> Path:
+    base = Path(args.dir) if args.dir else Path(os.environ.get("AWM_SESSION_DIR") or Path.cwd())
+    return base.resolve() / "wm"
 
-    return Session(args.dir)
+
+def _wm_config(args: argparse.Namespace) -> dict:
+    from awm.wm.schema import WMError, load_json
+
+    path = _wm_dir(args) / "config.json"
+    if not path.is_file():
+        raise WMError(f"{path} missing; run `awm wm init` first")
+    return load_json(path)
+
+
+def _wm_roots(cfg: dict) -> list[Path]:
+    return [Path(r) for r in (cfg.get("session_dir"), cfg.get("prior_runs_root"), cfg.get("memory_root")) if r]
+
+
+def _wm_memory(cfg: dict):
+    from awm.wm.memory import Memory
+
+    root = cfg.get("memory_root")
+    if not root:
+        return None
+    return Memory(Path(root), session=cfg["session_id"], arm=cfg["arm"], split_side=cfg.get("split_side", "train"),
+                  readonly=bool(cfg.get("memory_readonly")), visible_sides=tuple(cfg.get("memory_sides") or ["train"]))
 
 
 def _wm_init(args: argparse.Namespace) -> int:
-    import shlex
+    import time
 
-    from awm.wm.runtime import Session
+    from awm.wm.schema import dump_json
 
-    overrides = {
-        "submission": str(Path(args.submission).resolve()) if args.submission else None,
-        "memory_root": str(Path(args.memory_root).resolve()) if args.memory_root else None,
-        "memory_readonly": True if args.memory_readonly else None,
-        "official_argv": shlex.split(args.official_argv) if args.official_argv else None,
-        "official_cwd": str(Path(args.official_cwd).resolve()) if args.official_cwd else None,
-        "custom_argv": shlex.split(args.custom_argv) if args.custom_argv else None,
-        "auto_relaunch": False if args.no_auto_relaunch else None,
-        "spawn_worker": False if args.no_spawn_worker else None,
-        "split_side": args.split_side,
-        "submission_mode": args.submission_mode,
+    wm = _wm_dir(args)
+    session_dir = wm.parent
+    for sub in ("cards", "tmp"):
+        (wm / sub).mkdir(parents=True, exist_ok=True)
+    (wm / "consults.jsonl").touch()
+    cfg = {
+        "schema_version": "awm-wm-config-v2",
+        "session_id": f"{session_dir.name}-{int(time.time())}",
+        "session_dir": str(session_dir),
+        "arm": args.arm,
         "prior_runs_root": str(Path(args.prior_runs).resolve()) if args.prior_runs else None,
+        "memory_root": str(Path(args.memory_root).resolve()) if args.memory_root else None,
+        "memory_sides": [x.strip() for x in (args.memory_sides or "train").split(",") if x.strip()],
+        "memory_readonly": bool(args.memory_readonly),
+        "split_side": args.split_side,
         "wma_model": args.wma_model,
-        "wma_backend": args.wma_backend,
-        "wma_strict": True if args.wma_strict else None,
         "base_model": args.base_model,
-        "retrieval_k": args.retrieval_k,
-        "memory_sides": [x.strip() for x in args.memory_sides.split(",") if x.strip()] if args.memory_sides else None,
+        "consult_api": "SendMessage to the wma session; one response shape (awm-consult-response-v1)",
     }
-    s = Session.init(args.dir, arm=args.arm, **overrides)
-    print(f"initialised {s.wm} (arm={s.config['arm']}, memory={s.config['memory_root']})")
-    print(f"hook example: {s.wm / 'hook_example.py'}")
+    if cfg["arm"] in ("traj", "llm") and not cfg["prior_runs_root"]:
+        print(f"WARNING: arm {cfg['arm']} without --prior-runs: the WMA has no raw runs to read", file=sys.stderr)
+    if cfg["arm"] in ("retrieval", "llm") and not cfg["memory_root"]:
+        print(f"WARNING: arm {cfg['arm']} without --memory-root: the WMA has no cards to search", file=sys.stderr)
+    dump_json(wm / "config.json", cfg)
+    print(f"initialised {wm} (arm={cfg['arm']}, prior_runs={cfg['prior_runs_root']}, memory={cfg['memory_root']})")
     return 0
 
 
-def _wm_propose(args: argparse.Namespace) -> int:
-    from awm.wm.runtime import print_ping
+def _wm_text(args: argparse.Namespace) -> str:
+    if getattr(args, "text", None):
+        return args.text
+    if getattr(args, "plan", None):
+        return Path(args.plan).read_text()
+    return sys.stdin.read()
 
-    s = _wm_session(args)
-    ping = s.propose(args.plan, text=args.text)
-    print_ping(ping, s)
+
+def _wm_draft_card(args: argparse.Namespace) -> int:
+    import yaml
+
+    from awm.wm import intake
+
+    cfg = _wm_config(args)
+    text = _wm_text(args)
+    card_id = args.card_id or f"exp-{len(list((_wm_dir(args) / 'cards').glob('exp-*'))) + 1:02d}"
+    card, questions = intake.draft_card(card_id, text, {}, Path(cfg["session_dir"]), base_model=cfg.get("base_model"))
+    card["gaps"] = [q["question"] for q in questions]
+    card.pop("intake", None)
+    print(yaml.safe_dump(card, sort_keys=False, allow_unicode=True, width=100))
     return 0
 
 
-def _wm_reply(args: argparse.Namespace) -> int:
-    s = _wm_session(args)
-    choose = args.choose or ("answer" if (args.answer or args.answer_file) else None)
-    if not choose:
-        raise SystemExit("reply needs --choose <option>, or --answer/--answer-file for a question")
-    out = s.reply(args.ping, choose, why=args.why, amend=args.amend, answer=args.answer, answer_file=args.answer_file)
-    printed = out.pop("printed", None)
-    print(json.dumps(out, indent=2, sort_keys=True, default=str))
-    if printed:
-        print(printed)
+def _wm_search(args: argparse.Namespace) -> int:
+    import yaml
+
+    from awm.wm import intake
+
+    cfg = _wm_config(args)
+    mem = _wm_memory(cfg)
+    if mem is None or cfg["arm"] not in ("retrieval", "llm"):
+        print(json.dumps({"precedents": [], "note": f"arm {cfg['arm']} has no memory to search"}, indent=2))
+        return 0
+    if args.card:
+        card = yaml.safe_load(Path(args.card).read_text())
+    else:
+        card, _ = intake.draft_card("query", _wm_text(args), {}, Path(cfg["session_dir"]), base_model=cfg.get("base_model"))
+    pre = mem.precedents(card, k=args.k)
+    curves = mem.curves([(p["session"], p["card_id"]) for p in pre]) if pre else {}
+    print(json.dumps({"precedents": pre, "curves": curves, "visible_sides": list(mem.visible_sides)}, indent=2, default=str))
     return 0
 
 
-def _wm_checkpoint(args: argparse.Namespace) -> int:
-    from awm.wm.runtime import print_ping
+def _wm_eval_plan(args: argparse.Namespace) -> int:
+    from awm.wm.consult import default_eval_plan
 
-    s = _wm_session(args)
-    code = s.checkpoint(args.card_id, args.checkpoint, step=args.step, final=args.final)
-    st = s.state(args.card_id)
-    if code == 3:
-        py = st.get("pending_yield") or {}
-        print(f"[{args.card_id}] YIELD at step {args.step}: exit after this save; the runtime evaluates "
-              f"{py.get('standing') or ''} {[r['ping_id'] for r in py.get('requested', [])] or ''} "
-              f"and relaunches from {args.checkpoint}".replace("  ", " "))
-    elif code == 4:
-        print(f"[{args.card_id}] ABORT: stop training; write result.yaml and finalize")
-    for ping in s.mailbox(args.card_id).pending():
-        print_ping(ping, s)
-    return code
-
-
-def _wm_worker(args: argparse.Namespace) -> int:
-    s = _wm_session(args)
-    out = s.run_worker(args.card_id)
-    print(json.dumps(out, indent=2, sort_keys=True, default=str))
+    print(json.dumps(default_eval_plan(args.steps, n=args.n, parent_value=args.parent), indent=2))
     return 0
 
 
-def _wm_finalize(args: argparse.Namespace) -> int:
-    s = _wm_session(args)
-    out = s.finalize(args.card_id, args.result, decision=args.decision, summary=args.summary, verdict=args.verdict)
-    print(json.dumps(out, indent=2, sort_keys=True, default=str))
+def _wm_read_eval(args: argparse.Namespace) -> int:
+    import math
+
+    from awm.wm.schema import WMError, load_json
+
+    cfg = _wm_config(args)
+    path = Path(args.path).resolve()
+    if not any(str(path).startswith(str(Path(r).resolve())) for r in _wm_roots(cfg)):
+        raise WMError(f"{path} is outside the allowed roots")
+    raw = load_json(path)
+    value = raw.get("accuracy", raw.get("value"))
+    n = raw.get("n")
+    stderr = raw.get("stderr")
+    if stderr is None and isinstance(value, (int, float)) and n:
+        stderr = math.sqrt(max(value * (1 - value), 0) / n)
+    print(json.dumps({"path": str(path), "metric": "accuracy", "value": value, "n": n, "stderr": stderr, "raw_keys": sorted(raw)}, indent=2))
+    return 0
+
+
+def _wm_log(args: argparse.Namespace) -> int:
+    from awm.wm.consult import log_consult
+
+    cfg = _wm_config(args)
+    response = json.loads(Path(args.response).read_text())
+    request = Path(args.request).read_text() if args.request else ""
+    entry = log_consult(_wm_dir(args), response, request=request, roots=_wm_roots(cfg), arm=cfg["arm"], model=cfg.get("wma_model"))
+    print(json.dumps(entry, indent=2, default=str))
+    return 0
+
+
+def _wm_outcome(args: argparse.Namespace) -> int:
+    from awm.wm.consult import record_outcome
+
+    _wm_config(args)
+    entry = record_outcome(_wm_dir(args), args.card, final_value=args.final, shipped=args.shipped, note=args.note)
+    print(json.dumps(entry, indent=2, default=str))
     return 0
 
 
 def _wm_status(args: argparse.Namespace) -> int:
-    s = _wm_session(args)
-    print(json.dumps(s.status(args.card_id), indent=2, sort_keys=True, default=str))
+    from awm.wm.consult import ConsultLedger
+
+    cfg = _wm_config(args)
+    rows = ConsultLedger(_wm_dir(args) / "consults.jsonl").rows()
+    by_card: dict[str, list] = {}
+    for r in rows:
+        by_card.setdefault(r.get("card_id", "?"), []).append(r)
+    print(json.dumps({"arm": cfg["arm"], "wma_model": cfg.get("wma_model"), "consults": len(rows),
+                      "cards": {k: {"consults": len(v), "last_verdict": next((x.get("verdict") for x in reversed(v) if x.get("verdict")), None),
+                                    "last_suggestion": next((x.get("suggestion") for x in reversed(v) if x.get("suggestion")), None),
+                                    "outcome": next((x.get("final_value") for x in reversed(v) if x.get("event") == "outcome"), None)}
+                                for k, v in by_card.items()}}, indent=2, default=str))
     return 0
 
 
-def _wm_pending(args: argparse.Namespace) -> int:
-    from awm.wm.runtime import print_ping
-
-    s = _wm_session(args)
-    pending = s.pending_replies()
-    for ping in pending:
-        print_ping(ping, s)
-    if not pending:
-        print("no pings awaiting a reply")
-    return 1 if pending else 0
-
-
 def _wm_memory_seed(args: argparse.Namespace) -> int:
-    s = _wm_session(args)
-    n = s.memory.seed_from_exp_cards(Path(args.results_dir), side=args.side)
-    print(f"seeded {n} reconstructed cards from {args.results_dir} ({args.side}); memory now {s.memory.stats()}")
+    cfg = _wm_config(args)
+    mem = _wm_memory(cfg)
+    if mem is None:
+        raise SystemExit("no memory_root configured")
+    n = mem.seed_from_exp_cards(Path(args.results_dir), side=args.side)
+    print(f"seeded {n} reconstructed cards from {args.results_dir} ({args.side}); memory now {mem.stats()}")
     return 0
 
 
 def _wm_memory_stats(args: argparse.Namespace) -> int:
-    s = _wm_session(args)
-    print(json.dumps(s.memory.stats(), indent=2))
+    cfg = _wm_config(args)
+    mem = _wm_memory(cfg)
+    print(json.dumps(mem.stats() if mem else {"note": "no memory_root configured"}, indent=2))
     return 0
 
 
@@ -516,82 +578,54 @@ def build_parser() -> argparse.ArgumentParser:
     ec = exp.add_parser("check", help="find queued, running, or unreviewed experiments")
     ec.add_argument("--root", type=Path)
     ec.set_defaults(func=_experiment_check)
-    wm = sub.add_parser("wm", help="the world-model agent protocol: propose, reply, checkpoint, finalize")
-    wm.add_argument("--dir", type=Path,
-                    default=Path(os.environ.get("AWM_SESSION_DIR") or Path.cwd()),
-                    help="the scientist's session directory (default: $AWM_SESSION_DIR or cwd)")
+    wm = sub.add_parser("wm", help="the world-model agent's toolbelt (draft cards, search past experiments, log consults)")
+    wm.add_argument("--dir", type=Path, help="the scientist's session directory (default: $AWM_SESSION_DIR or cwd)")
     wmc = wm.add_subparsers(dest="cmd", required=True)
 
-    wi = wmc.add_parser("init", help="create wm/ with config.yaml, inbox.md, hook_example.py (harness step)")
-    wi.add_argument("--arm", default="null", choices=["null", "retrieval", "llm", "traj", "predictor"])
-    wi.add_argument("--submission", help="path that adopt will point at the sealed checkpoint")
-    wi.add_argument("--memory-root", help="WMA memory location (default $AWM_WM_MEMORY or <data>/wm-memory)")
-    wi.add_argument("--memory-readonly", action="store_true", help="held-out sessions: read memory, never write")
+    wi = wmc.add_parser("init", help="write wm/config.json: which evidence the WMA may read")
+    wi.add_argument("--arm", default="null", choices=["null", "retrieval", "traj", "llm"])
+    wi.add_argument("--prior-runs", help="raw prior runs (traj/llm arms)")
+    wi.add_argument("--memory-root", help="WMA memory with extracted cards (retrieval/llm arms)")
+    wi.add_argument("--memory-sides", default="train", help="comma list of split sides visible in memory")
+    wi.add_argument("--memory-readonly", action="store_true")
     wi.add_argument("--split-side", default="train", choices=["train", "test"])
-    wi.add_argument("--submission-mode", default=None, choices=["symlink", "copy"],
-                    help="adopt links (default) or copies the sealed checkpoint into --submission")
-    wi.add_argument("--memory-sides", default=None, help="comma list of split sides the agent may retrieve from (default train)")
-    wi.add_argument("--prior-runs", help="raw prior runs the llm/traj arms may read (e.g. /home/ben/prior_runs)")
-    wi.add_argument("--wma-model", help="model the llm/traj arms run on (default claude-opus-4-8)")
-    wi.add_argument("--wma-backend", choices=["claude-cli", "fake"], help="llm/traj backend (default claude-cli)")
-    wi.add_argument("--wma-strict", action="store_true",
-                    help="autonomous arms: a failed agent call fails the brief instead of silently falling back")
-    wi.add_argument("--retrieval-k", type=int, help="top-k precedents for the retrieval/llm arms (default 5)")
-    wi.add_argument("--base-model", help="hub id being post-trained; the parent a plan gets when it names none")
-    wi.add_argument("--official-argv", help="shell string with {checkpoint} {n} {out}; default runs evaluate.py")
-    wi.add_argument("--official-cwd", help="cwd for the official evaluator (default: session dir)")
-    wi.add_argument("--custom-argv", help="shell string with {checkpoint} {items} {out} {n}; default awm.wm.score_items")
-    wi.add_argument("--no-auto-relaunch", action="store_true", help="the scientist resumes training by hand")
-    wi.add_argument("--no-spawn-worker", action="store_true", help="run `awm wm worker` yourself after a yield")
+    wi.add_argument("--wma-model", help="the model the WMA session runs on (recorded)")
+    wi.add_argument("--base-model", help="hub id being post-trained; default parent when a plan names none")
     wi.set_defaults(func=_wm_init)
 
-    wp = wmc.add_parser("propose", help="propose an experiment from a plan; the agent drafts the card and returns questions or the brief")
-    wp.add_argument("plan", nargs="?", type=Path, help="plan file (markdown/text); a .yaml card is accepted too")
-    wp.add_argument("--text", help="the plan inline instead of a file")
-    wp.set_defaults(func=_wm_propose)
+    wd = wmc.add_parser("draft-card", help="deterministic card skeleton + gaps from the scientist's words and the workspace")
+    wd.add_argument("--text"); wd.add_argument("--plan", type=Path); wd.add_argument("--card-id")
+    wd.set_defaults(func=_wm_draft_card)
 
-    wr = wmc.add_parser("reply", help="answer a ping")
-    wr.add_argument("ping", help="<card_id>/<ping_id>, e.g. exp-03/p-2")
-    wr.add_argument("--choose", help="option id (brief/yield_request/decision)")
-    wr.add_argument("--why")
-    wr.add_argument("--amend", help="revised card file (brief: amend)")
-    wr.add_argument("--answer", help="answers to a question ping, as 'field: value' lines or free text")
-    wr.add_argument("--answer-file", help="YAML mapping of field -> value")
-    wr.set_defaults(func=_wm_reply)
+    wsr = wmc.add_parser("search", help="nearest past experiments in memory, with outcomes and curves")
+    wsr.add_argument("--text"); wsr.add_argument("--plan", type=Path); wsr.add_argument("--card", type=Path)
+    wsr.add_argument("--k", type=int, default=5)
+    wsr.set_defaults(func=_wm_search)
 
-    wk = wmc.add_parser("checkpoint", help="the training hook; exit 0 continue, 3 yield, 4 abort")
-    wk.add_argument("card_id")
-    wk.add_argument("checkpoint", type=Path)
-    wk.add_argument("--step", type=int, required=True)
-    wk.add_argument("--final", action="store_true")
-    wk.set_defaults(func=_wm_checkpoint)
+    we = wmc.add_parser("eval-plan", help="the default evaluation schedule (25/50/75 percent of the planned steps)")
+    we.add_argument("--steps", type=int); we.add_argument("--n", type=int, default=150); we.add_argument("--parent", type=float)
+    we.set_defaults(func=_wm_eval_plan)
 
-    ww = wmc.add_parser("worker", help="process a pending yield (spawned by the hook; run by hand with --no-spawn-worker)")
-    ww.add_argument("card_id")
-    ww.set_defaults(func=_wm_worker)
+    wre = wmc.add_parser("read-eval", help="parse an evaluate.py --json-output-file result the scientist points at")
+    wre.add_argument("path")
+    wre.set_defaults(func=_wm_read_eval)
 
-    wf = wmc.add_parser("finalize", help="close a card: --decision + --summary (the runtime writes the result), or the completed card file")
-    wf.add_argument("card_id")
-    wf.add_argument("result", nargs="?", type=Path, help="optional: the card file with result + conclusion filled in")
-    wf.add_argument("--decision", choices=["adopt", "reject", "iterate", "abandon_line"])
-    wf.add_argument("--summary", help="two lines: what happened and what it says about your hypothesis")
-    wf.add_argument("--verdict", choices=["supported", "contradicted", "inconclusive"])
-    wf.set_defaults(func=_wm_finalize)
+    wl = wmc.add_parser("log", help="validate a consult response, lint its citations, append it to wm/consults.jsonl")
+    wl.add_argument("--response", required=True, type=Path); wl.add_argument("--request", type=Path)
+    wl.set_defaults(func=_wm_log)
 
-    ws = wmc.add_parser("status", help="session or card state")
-    ws.add_argument("card_id", nargs="?")
-    ws.set_defaults(func=_wm_status)
+    wo = wmc.add_parser("outcome", help="record what the scientist shipped and scored")
+    wo.add_argument("--card", required=True); wo.add_argument("--final", type=float); wo.add_argument("--shipped"); wo.add_argument("--note")
+    wo.set_defaults(func=_wm_outcome)
 
-    wpend = wmc.add_parser("pending", help="list pings awaiting a reply (exit 1 if any)")
-    wpend.set_defaults(func=_wm_pending)
+    wst = wmc.add_parser("status", help="consults per card, last verdict and suggestion, outcomes")
+    wst.set_defaults(func=_wm_status)
 
     wmem = wmc.add_parser("memory", help="WMA memory").add_subparsers(dest="memcmd", required=True)
     wseed = wmem.add_parser("seed", help="load reconstructed cards from results/exp-cards/<split> as precedents")
-    wseed.add_argument("results_dir", type=Path)
-    wseed.add_argument("--side", default="train", choices=["train", "test"])
+    wseed.add_argument("results_dir", type=Path); wseed.add_argument("--side", default="train", choices=["train", "test"])
     wseed.set_defaults(func=_wm_memory_seed)
-    wstat = wmem.add_parser("stats")
-    wstat.set_defaults(func=_wm_memory_stats)
+    wstat = wmem.add_parser("stats"); wstat.set_defaults(func=_wm_memory_stats)
     return p
 
 
