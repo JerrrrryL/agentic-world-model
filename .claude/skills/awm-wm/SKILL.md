@@ -16,7 +16,7 @@ plan.
 Write a short plan in your own words, then hand it over:
 
 ```bash
-awm wm propose plan_exp01.md        # foreground; allow ~15 min; never run two at once
+awm wm propose plan_exp01.md
 ```
 
 A plan the agent can turn into a card without asking says: the problem you
