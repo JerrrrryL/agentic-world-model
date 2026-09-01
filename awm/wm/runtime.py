@@ -787,7 +787,7 @@ class Session:
         self.ledger.append("card_closed", card_id=card_id, how="finalize", decision=decision,
                            verdict=result["conclusion"].get("verdict", "inconclusive"))
         self._record_to_memory(card_id, result)
-        self.mailbox(card_id).send("notice", f"Closed: {result['conclusion']['verdict']}, {decision}. Recorded to memory.",
+        self.mailbox(card_id).send("notice", f"Closed: {result['conclusion'].get('verdict', 'inconclusive')}, {decision}. Recorded to memory.",
                                    raised_by="runtime")
         return {"status": "closed", "decision": decision, "submission": self.config["submission"] if decision == "adopt" else None}
 
