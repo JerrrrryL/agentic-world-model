@@ -172,45 +172,53 @@ def validate_card(card: dict[str, Any], session_dir: Path) -> list[dict[str, Any
         if fatal and not passed:
             raise WMError(f"grounding check failed: {name}: {detail}")
 
-    # problem
+    # problem — statement required; evidence, failure examples, watch set optional but checked when given
     problem = card["problem"]
     _req(problem, "statement", "problem")
-    evidence = _list(_req(problem, "evidence", "problem"), "problem.evidence")
+    evidence = _list(problem.get("evidence") or [], "problem.evidence")
     for i, ev in enumerate(evidence):
         ev = _mapping(ev, f"problem.evidence[{i}]")
         p = Path(str(_req(ev, "path", f"problem.evidence[{i}]")))
         _req(ev, "locator", f"problem.evidence[{i}]")
         check(f"evidence[{i}].path", p.is_file() and inside(p, session_dir),
               f"{p} {'exists inside session dir' if p.is_file() and inside(p, session_dir) else 'missing or outside session dir'}")
-    examples = _list(_req(problem, "failure_examples", "problem"), "problem.failure_examples")
-    check("failure_examples.count", 3 <= len(examples) <= 10, f"{len(examples)} examples (need 3-10)")
+    examples = _list(problem.get("failure_examples") or [], "problem.failure_examples")
+    if examples:
+        check("failure_examples.count", 3 <= len(examples) <= 10, f"{len(examples)} examples (need 3-10)", fatal=False)
     for i, ex in enumerate(examples):
         ex = _mapping(ex, f"problem.failure_examples[{i}]")
-        for key in ("id", "source", "question", "gold", "model_output", "failure"):
+        for key in ("id", "source", "question", "gold"):
             _req(ex, key, f"problem.failure_examples[{i}]")
         src = Path(str(ex["source"]))
         check(f"failure_examples[{i}].source", src.is_file() and inside(src, session_dir), str(src))
-    watch = _mapping(_req(problem, "watch_set", "problem"), "problem.watch_set")
-    wpath = Path(str(_req(watch, "path", "problem.watch_set")))
-    wn = int(_req(watch, "n", "problem.watch_set"))
-    check("watch_set.path", wpath.is_file() and inside(wpath, session_dir), str(wpath))
-    actual = count_jsonl(wpath)
-    check("watch_set.count", actual == wn, f"file has {actual} items, card says {wn}")
-    ids = {str(r.get("id")) for r in read_jsonl(wpath)}
-    check("watch_set.ids", all("id" in r for r in read_jsonl(wpath)), "every watch item has an id")
-    check("failure_examples.in_watch_set",
-          all(str(ex["id"]) in ids for ex in examples),
-          "every failure example id is in the watch set", fatal=False)
+    watch = problem.get("watch_set") or None
+    if watch:
+        watch = _mapping(watch, "problem.watch_set")
+        wpath = Path(str(_req(watch, "path", "problem.watch_set")))
+        wn = int(_req(watch, "n", "problem.watch_set"))
+        check("watch_set.path", wpath.is_file() and inside(wpath, session_dir), str(wpath))
+        actual = count_jsonl(wpath)
+        check("watch_set.count", actual == wn, f"file has {actual} items, card says {wn}")
+        rows = read_jsonl(wpath)
+        check("watch_set.ids", all({"id", "question", "gold"} <= set(r) for r in rows),
+              "every watch item has id, question, gold")
+        ids = {str(r.get("id")) for r in rows}
+        check("failure_examples.in_watch_set",
+              all(str(ex["id"]) in ids for ex in examples),
+              "every failure example id is in the watch set", fatal=False)
+    else:
+        check("watch_set.present", False, "no watch set: the contract will have no item-level evaluator", fatal=False)
 
-    # hypothesis
+    # hypothesis — the claim is required; the rest is what a careful scientist adds
     hyp = card["hypothesis"]
-    for key in ("claim", "mechanism", "falsified_if"):
-        _req(hyp, key, "hypothesis")
-    eff = _mapping(_req(hyp, "expected_effect", "hypothesis"), "hypothesis.expected_effect")
-    for key in ("metric", "direction", "against"):
-        _req(eff, key, "hypothesis.expected_effect")
-    if eff["direction"] not in ("higher", "lower"):
-        raise WMError("hypothesis.expected_effect.direction must be higher|lower")
+    _req(hyp, "claim", "hypothesis")
+    for key in ("mechanism", "falsified_if"):
+        check(f"hypothesis.{key}", bool(hyp.get(key)), f"{key} {'stated' if hyp.get(key) else 'not stated'}", fatal=False)
+    eff = hyp.get("expected_effect") or {}
+    if eff:
+        eff = _mapping(eff, "hypothesis.expected_effect")
+        if eff.get("direction") not in (None, "higher", "lower"):
+            raise WMError("hypothesis.expected_effect.direction must be higher|lower")
     if re.search(r"\b(reach|hit|achieve|target)\b.*\d", str(hyp["claim"]), re.IGNORECASE):
         check("hypothesis.not_a_target", False, "claim reads as a score target, not a hypothesis", fatal=False)
 
@@ -257,9 +265,11 @@ def validate_card(card: dict[str, Any], session_dir: Path) -> list[dict[str, Any
     proto = _mapping(_req(ev, "protocol", "evaluation"), "evaluation.protocol")
     n = _req(proto, "n", "evaluation.protocol")
     check("evaluation.n", isinstance(n, int) and n > 0, f"n={n}")
-    _req(proto, "dev_set", "evaluation.protocol")
-    comp = _mapping(_req(ev, "comparator", "evaluation"), "evaluation.comparator")
-    _req(comp, "ref", "evaluation.comparator")
+    check("evaluation.dev_set", bool(proto.get("dev_set")),
+          f"dev_set {'named' if proto.get('dev_set') else 'not named; official --limit n assumed'}", fatal=False)
+    comp = ev.get("comparator") or {}
+    if comp:
+        _mapping(comp, "evaluation.comparator")
     return checks
 
 
@@ -277,8 +287,8 @@ def validate_result(result: dict[str, Any], card_id: str) -> None:
         raise WMError(f"schema_version must be {CARD_SCHEMA}")
     if result.get("card_id") != card_id:
         raise WMError(f"card_id must be {card_id}")
-    res = _mapping(_req(result, "result", "result"), "result.result")
-    if _req(res, "execution", "result.result") not in EXECUTIONS:
+    res = _mapping(result.get("result") or {}, "result.result")
+    if res.get("execution") is not None and res["execution"] not in EXECUTIONS:
         raise WMError(f"result.result.execution must be one of {EXECUTIONS}")
     _list(res.get("measurements", []), "result.result.measurements")
     for i, m in enumerate(res.get("measurements", [])):
@@ -286,12 +296,13 @@ def validate_result(result: dict[str, Any], card_id: str) -> None:
         for key in ("metric", "value", "n", "path"):
             _req(m, key, f"result.measurements[{i}]")
     con = _mapping(_req(result, "conclusion", "result"), "result.conclusion")
-    if _req(con, "verdict", "result.conclusion") not in VERDICTS:
+    verdict = con.get("verdict") or "inconclusive"
+    if verdict not in VERDICTS:
         raise WMError(f"conclusion.verdict must be one of {VERDICTS}")
     if _req(con, "decision", "result.conclusion") not in CARD_DECISIONS:
         raise WMError(f"conclusion.decision must be one of {CARD_DECISIONS}")
     _req(con, "summary", "result.conclusion")
-    if con["verdict"] in ("supported", "contradicted") and not res.get("measurements"):
+    if verdict in ("supported", "contradicted") and not res.get("measurements"):
         raise WMError("supported/contradicted needs at least one measurement")
 
 

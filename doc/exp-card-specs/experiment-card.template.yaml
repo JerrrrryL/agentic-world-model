@@ -15,6 +15,11 @@
 # appended to the same file afterwards and submitted with `awm wm finalize`.
 # Sections 1-4 must not change after freeze; finalize checks that they didn't.
 #
+# Required to propose: problem.statement, hypothesis.claim, setup (parent_checkpoint,
+# data, method, command, resume_argv, output_dir, progress), evaluation.protocol.n.
+# Everything else is optional — but what you give, the agent checks and uses:
+# a watch_set becomes an item-level evaluator, evidence paths are verified.
+#
 # Paths are absolute, inside {dir}. Commands are the exact argv that was run.
 # Unknown is `null`, never a guess. Don't write a target ("reach 85%") as a
 # hypothesis; write what you expect to change, against what, and what would

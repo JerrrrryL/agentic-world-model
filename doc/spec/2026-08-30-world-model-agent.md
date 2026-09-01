@@ -247,7 +247,7 @@ calibration.
 | CLI `awm wm init|propose|reply|checkpoint|worker|finalize|status|pending|memory` | `awm/cli.py` |
 | Claude Code Stop hook (hold the turn while a reply is owed) | `.claude/hooks/wm_pending_reply.py` |
 | scientist skill | `.claude/skills/awm-wm/SKILL.md` |
-| one prompt, one template (the null arm is the control) | `input/instruction.md`, `input/exp-card.template.yaml` (copy of `doc/exp-card-specs/experiment-card.template.yaml`) |
+| the prompt is PTB's `prompt.txt` + one section (`input/wma_section.md`); memory, contracts, evaluators are the WMA's business, never described to the scientist; minimal card = statement, claim, setup, protocol.n | `input/wma_section.md`, `input/instruction.md` (rendered), `input/exp-card.template.yaml` |
 | end-to-end test with a fake trainer and fake graders | `tests/test_wm.py` |
 
 Simplifications relative to the sections above: the worker is spawned by the

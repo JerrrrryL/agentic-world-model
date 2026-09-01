@@ -81,20 +81,24 @@ def default_contract(card: dict[str, Any], config: dict[str, Any]) -> dict[str, 
     """A contract derived from the card's own evaluation section and watch set."""
     ev = card["evaluation"]
     n = int(ev["protocol"]["n"])
-    metric = card["hypothesis"]["expected_effect"].get("metric", "accuracy")
-    direction = card["hypothesis"]["expected_effect"].get("direction", "higher")
+    eff = card["hypothesis"].get("expected_effect") or {}
+    metric = eff.get("metric") or "accuracy"
+    direction = eff.get("direction") or "higher"
     dev_name = f"dev{n}"
     evaluators = [{
         "name": dev_name, "kind": "official", "adapter": config.get("official_adapter", "posttrainbench"),
-        "metric": metric, "direction": direction, "n": n, "seed": ev["protocol"].get("seed", 0),
+        "metric": metric, "direction": direction, "n": n, "seed": ev["protocol"].get("seed") or 0,
         "stderr": {"method": "bernoulli"},
     }]
-    watch = card["problem"]["watch_set"]
-    evaluators.append({
-        "name": "watch", "kind": "custom", "adapter": "items_exact_match", "metric": "accuracy",
-        "direction": "higher", "items": watch["path"], "n": int(watch["n"]), "seed": 0,
-        "stderr": {"method": "bernoulli"},
-    })
+    standing = [dev_name]
+    watch = card["problem"].get("watch_set") or None
+    if watch:
+        evaluators.append({
+            "name": "watch", "kind": "custom", "adapter": "items_exact_match", "metric": "accuracy",
+            "direction": "higher", "items": watch["path"], "n": int(watch["n"]), "seed": 0,
+            "stderr": {"method": "bernoulli"},
+        })
+        standing.append("watch")
     on_request: list[str] = []
     diag = ev.get("diagnostic") or {}
     if diag.get("items"):
@@ -113,7 +117,7 @@ def default_contract(card: dict[str, Any], config: dict[str, Any]) -> dict[str, 
         "standing_yields": {
             "progress": dict(card["setup"]["progress"]),
             "cadence": {"kind": "fractions", "values": list(fractions)},
-            "evaluators": [dev_name, "watch"],
+            "evaluators": standing,
         },
         "on_request": on_request,
         "rule_schema": RULE_SCHEMA,

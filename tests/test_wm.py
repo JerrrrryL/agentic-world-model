@@ -387,3 +387,27 @@ def test_agent_degradation_is_recorded_and_strict_mode_refuses(tmp_path: Path) -
     assert b3["agent"]["produced_by"] == "llm" and b3["agent"]["degraded"] is None
     s4, sd4 = make_session(tmp_path / "ret", parent_score=0.30, arm="retrieval")
     assert s4.propose(write_card(sd4))["agent"]["retrieval_k"] == 5
+
+
+def test_minimal_card_proposes_and_gets_a_contract_without_watch(tmp_path: Path) -> None:
+    s, sd = make_session(tmp_path, parent_score=0.30)
+    path = write_card(sd)
+    card = yaml.safe_load(path.read_text())
+    card["problem"] = {"statement": "the base model is weak at multi-step arithmetic"}
+    card["hypothesis"] = {"claim": "SFT on worked solutions will help"}
+    card["evaluation"] = {"protocol": {"n": 150}}
+    path.write_text(yaml.safe_dump(card, sort_keys=False))
+    assert s.propose(path)["kind"] == "brief"
+    checks = {c["check"]: c["passed"] for c in json.loads((s.card_dir("exp-01") / "grounding" / "report.json").read_text())["checks"]}
+    assert checks["watch_set.present"] is False and checks["hypothesis.mechanism"] is False  # advisory, not fatal
+    contract = yaml.safe_load((s.card_dir("exp-01") / "contract.proposed.yaml").read_text())
+    assert [e["name"] for e in contract["evaluators"]] == ["dev150"]
+    assert contract["standing_yields"]["evaluators"] == ["dev150"]
+    s.reply("exp-01/p-1", "accept")
+    assert list(s.status("exp-01")["parent"]) == ["dev150"]
+    # a minimal result: decision + summary is enough
+    completed = yaml.safe_load(path.read_text())
+    completed["conclusion"] = {"decision": "reject", "summary": "did not run long enough to say"}
+    path.write_text(yaml.safe_dump(completed, sort_keys=False))
+    st = s.state("exp-01"); st["status"] = "awaiting_review"; s._save_state(st)
+    assert s.finalize("exp-01", path)["decision"] == "reject"

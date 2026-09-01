@@ -91,7 +91,7 @@ copied whole, so nothing there is size-capped.
 | file | role |
 |---|---|
 | `patches/apply_extra_binds.py` | adds `POST_TRAIN_BENCH_EXTRA_BINDS` to `run_task.sh` (idempotent) |
-| `build_prompts.py` | writes `prompt_fulltraj.txt`, `prompt_wm.txt`, `prompt_wm_fulltraj.txt` into the checkout; review copies under `prompts/` |
+| `build_prompts.py` | every prompt is PTB's `prompt.txt` plus sections before `## Rules`: `prompt_fulltraj` (+ Prior runs), `prompt_wm` (+ `input/wma_section.md`), `prompt_wm_fulltraj` (+ both); review copies under `prompts/`, `input/instruction.md` = `prompt_wm` |
 | `agents/claude_fulltraj_noawm/` | C1: PTB's Claude scaffold, unchanged |
 | `agents/claude_wm/` | C2/C3: clones awm at `AWM_REPO_REF`, `awm wm init`, skill + Stop hook, then the same Claude invocation |
 | `wm_pack.sbatch` | 8 cells/node, `<agent>:<config>` arms, per-cell prompt and binds |

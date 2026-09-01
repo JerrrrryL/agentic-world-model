@@ -1,16 +1,18 @@
 """Write the study's prompt files into a PostTrainBench checkout.
 
-``get_prompt.py`` loads ``src/eval/general/${POST_TRAIN_BENCH_PROMPT}.txt`` and
-fills ``{model} {benchmark} {num_hours} {gpu_info} {setup_other}
-{decontamination_tool} {eval_api_note}`` by plain replacement, so every prompt
-here is written in those placeholders. Four files:
+Every prompt is PostTrainBench's own ``prompt.txt`` plus at most two sections
+inserted before ``## Rules`` — nothing else changes, so a cell differs from the
+corpus runs only by what was added:
 
-    prompt_fulltraj.txt      PTB prompt + a "Prior runs" section          (C1: raw files, no WMA)
-    prompt_wm.txt            our instruction.md in PTB placeholders        (C3: WMA, memory only)
-    prompt_wm_fulltraj.txt   the same + the "Prior runs" section           (C2: raw files + WMA)
+    prompt_fulltraj.txt      PTB prompt + "Prior runs"                          (C1: raw files, no WMA)
+    prompt_wm.txt            PTB prompt + "The world-model agent"               (C3: WMA over memory)
+    prompt_wm_fulltraj.txt   PTB prompt + "Prior runs" + "The world-model agent" (C2: raw files + WMA)
 
-plus copies under rollout/prompts/ so the rendered text is reviewable in this
-repo. Run by rollout/setup.sh:
+The WMA section is ``input/wma_section.md`` (the source of truth); the rendered
+``prompt_wm.txt`` is also written to ``input/instruction.md`` for reference.
+``get_prompt.py`` fills ``{model} {benchmark} {num_hours} ...`` by plain
+replacement, so the sections use those placeholders too. Run by
+rollout/setup.sh:
 
     python rollout/build_prompts.py <ptb checkout>
 """
@@ -31,62 +33,54 @@ PRIOR_RUNS_SECTION = """## Prior runs
 
 """
 
-# instruction.md placeholders -> PTB placeholders / sandbox constants
-INSTRUCTION_MAP = {
-    "{dir}": "/home/ben/task",
-    "{submission}": "/home/ben/task/final_model",
-    "{time_limit}": "{num_hours} hours",
-    "{gpu}": "one Nvidia H100 GPU",
-}
+WMA_SECTION = (ROOT / "input" / "wma_section.md").read_text()
+
+
+def _insert_before_rules(prompt: str, *sections: str) -> str:
+    anchor = "## Rules"
+    if anchor not in prompt:
+        raise SystemExit("PTB prompt.txt has no '## Rules' heading; update build_prompts.py")
+    block = "".join(sec if sec.endswith("\n\n") else sec.rstrip("\n") + "\n\n" for sec in sections)
+    return prompt.replace(anchor, block + anchor, 1)
 
 
 def ptb_fulltraj(ptb_prompt: str) -> str:
-    """The PTB prompt with the prior-runs section inserted before ## Rules."""
-    anchor = "## Rules"
-    if anchor not in ptb_prompt:
-        raise SystemExit("PTB prompt.txt has no '## Rules' heading; update build_prompts.py")
-    return ptb_prompt.replace(anchor, PRIOR_RUNS_SECTION + anchor, 1)
+    """C1: the PTB prompt with the prior-runs section."""
+    return _insert_before_rules(ptb_prompt, PRIOR_RUNS_SECTION)
 
 
-def wm_prompt(instruction: str, *, fulltraj: bool) -> str:
-    """Our instruction.md rendered into PTB placeholders."""
-    text = instruction
-    for k, v in INSTRUCTION_MAP.items():
-        text = text.replace(k, v)
-    # PTB's per-benchmark fill-ins: the inspect-ai note and the decontamination tool
-    env_anchor = "- A copy of the `{benchmark}` test set and a contamination checker are available."
-    if env_anchor not in text:
-        raise SystemExit("instruction.md changed: the test-set/contamination bullet is missing")
-    text = text.replace(env_anchor, "{setup_other}{decontamination_tool}\n" + env_anchor, 1)
+def wm_prompt(ptb_prompt: str, *, fulltraj: bool) -> str:
+    """C2/C3: the PTB prompt with the world-model section (and prior runs for C2)."""
     if fulltraj:
-        anchor = "## The world-model agent"
-        if anchor not in text:
-            raise SystemExit("instruction.md changed: '## The world-model agent' heading missing")
-        text = text.replace(anchor, PRIOR_RUNS_SECTION + anchor, 1)
-    leftover = [p for p in ("{dir}", "{submission}", "{time_limit}", "{gpu}") if p in text]
-    if leftover:
-        raise SystemExit(f"unrendered placeholders: {leftover}")
-    return text
+        return _insert_before_rules(ptb_prompt, PRIOR_RUNS_SECTION, WMA_SECTION)
+    return _insert_before_rules(ptb_prompt, WMA_SECTION)
+
+
+def find_ptb_prompt(ptb: Path | None) -> Path:
+    for cand in ([ptb] if ptb else []) + [ROOT / "third_party" / "PostTrainBench"]:
+        f = Path(cand) / "src" / "eval" / "general" / "prompt.txt"
+        if f.is_file():
+            return f
+    raise SystemExit("no PostTrainBench prompt.txt found; pass the checkout path or init the submodule")
 
 
 def main() -> int:
     ptb = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else None
-    instruction = (ROOT / "input" / "instruction.md").read_text()
+    ptb_prompt = find_ptb_prompt(ptb).read_text()
     out_review = HERE / "prompts"
     out_review.mkdir(exist_ok=True)
     files = {
-        "prompt_wm.txt": wm_prompt(instruction, fulltraj=False),
-        "prompt_wm_fulltraj.txt": wm_prompt(instruction, fulltraj=True),
+        "prompt_fulltraj.txt": ptb_fulltraj(ptb_prompt),
+        "prompt_wm.txt": wm_prompt(ptb_prompt, fulltraj=False),
+        "prompt_wm_fulltraj.txt": wm_prompt(ptb_prompt, fulltraj=True),
     }
-    if ptb:
-        ptb_prompt = (ptb / "src" / "eval" / "general" / "prompt.txt").read_text()
-        files["prompt_fulltraj.txt"] = ptb_fulltraj(ptb_prompt)
     for name, text in files.items():
         (out_review / name).write_text(text)
         if ptb:
             (ptb / "src" / "eval" / "general" / name).write_text(text)
-    where = f" and {ptb / 'src/eval/general'}" if ptb else " (no checkout given: PTB variant skipped)"
-    print(f"wrote {', '.join(files)} to {out_review}{where}")
+    (ROOT / "input" / "instruction.md").write_text(files["prompt_wm.txt"])
+    where = f" and {ptb / 'src/eval/general'}" if ptb else ""
+    print(f"wrote {', '.join(files)} to {out_review}{where}; input/instruction.md = prompt_wm")
     return 0
 
 

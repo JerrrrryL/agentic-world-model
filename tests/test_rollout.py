@@ -47,19 +47,20 @@ def test_build_prior_runs_copies_and_indexes(tmp_path: Path) -> None:
     assert "| 0.740 | Qwen/Qwen3-4B-Base | cfg_b |" in md and "/home/ben/prior_runs/cfg_a/" in md
 
 
-def test_build_prompts_renders_ptb_placeholders() -> None:
+def test_build_prompts_is_ptb_plus_sections() -> None:
     bp = _load(REPO / "rollout" / "build_prompts.py")
-    instruction = (REPO / "input" / "instruction.md").read_text()
-    wm = bp.wm_prompt(instruction, fulltraj=False)
-    for leftover in ("{dir}", "{submission}", "{time_limit}", "{gpu}"):
-        assert leftover not in wm
-    assert "/home/ben/task/final_model" in wm and "{num_hours} hours" in wm
-    assert "{setup_other}{decontamination_tool}" in wm and "{model}" in wm and "{benchmark}" in wm
-    assert "## Prior runs" not in wm
-    wm_ft = bp.wm_prompt(instruction, fulltraj=True)
-    assert wm_ft.index("## Prior runs") < wm_ft.index("## The world-model agent")
-    ptb = "intro {model}\n## Rules\n1. x\n"
-    assert bp.ptb_fulltraj(ptb).index("## Prior runs") < bp.ptb_fulltraj(ptb).index("## Rules")
+    ptb = "intro `{model}` on {benchmark}\n## Rules\n1. x\n2. {num_hours} hours\n"
+    wm = bp.wm_prompt(ptb, fulltraj=False)
+    assert wm.startswith("intro `{model}`") and wm.endswith("2. {num_hours} hours\n")
+    assert wm.count("## The world-model agent") == 1 and "## Prior runs" not in wm
+    assert wm.index("## The world-model agent") < wm.index("## Rules")
+    assert "awm wm propose" in wm and "awm wm finalize" in wm and "memory/index.md" not in wm
+    wm_ft = bp.wm_prompt(ptb, fulltraj=True)
+    assert wm_ft.index("## Prior runs") < wm_ft.index("## The world-model agent") < wm_ft.index("## Rules")
+    c1 = bp.ptb_fulltraj(ptb)
+    assert "## Prior runs" in c1 and "world-model" not in c1
+    # the only difference between C1 and C2 prompts is the WMA section
+    assert wm_ft.replace(bp.WMA_SECTION.rstrip("\n") + "\n\n", "") == c1
     with pytest.raises(SystemExit):
         bp.ptb_fulltraj("no rules heading")
 

@@ -205,8 +205,11 @@ class Session:
     def _materialize_grounding(self, card: dict[str, Any], grounding: list[dict[str, Any]], gdir: Path) -> None:
         gdir.mkdir(parents=True, exist_ok=True)
         dump_json(gdir / "report.json", {"checks": grounding, "at": now()})
-        cited = [e["path"] for e in card["problem"]["evidence"]] + [card["problem"]["watch_set"]["path"]]
-        cited += [ex["source"] for ex in card["problem"]["failure_examples"]]
+        prob = card["problem"]
+        cited = [e["path"] for e in (prob.get("evidence") or [])]
+        if prob.get("watch_set"):
+            cited.append(prob["watch_set"]["path"])
+        cited += [ex["source"] for ex in (prob.get("failure_examples") or [])]
         for i, p in enumerate(dict.fromkeys(map(str, cited))):
             src = Path(p)
             if src.is_file() and src.stat().st_size <= 5_000_000:
@@ -782,7 +785,7 @@ class Session:
         st["closed_at"] = now()
         self._save_state(st)
         self.ledger.append("card_closed", card_id=card_id, how="finalize", decision=decision,
-                           verdict=result["conclusion"]["verdict"])
+                           verdict=result["conclusion"].get("verdict", "inconclusive"))
         self._record_to_memory(card_id, result)
         self.mailbox(card_id).send("notice", f"Closed: {result['conclusion']['verdict']}, {decision}. Recorded to memory.",
                                    raised_by="runtime")
