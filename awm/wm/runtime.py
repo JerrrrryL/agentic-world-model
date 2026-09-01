@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from . import intake as _intake
 from .agents import make_agent
 from .agents.base import Advice, Brief
 from .evaluators import freeze_evaluators, run_evaluator, watch_transitions
@@ -69,6 +70,8 @@ def default_config(session_dir: Path, arm: str = "null") -> dict[str, Any]:
         "wma_max_turns": 40,
         "wma_strict": False,            # autonomous arms: fail the brief instead of falling back silently
         "retrieval_k": 5,               # top-k precedents the retrieval/llm arms pull from memory
+        "base_model": None,             # the hub id being post-trained; the default parent when a plan names none
+        "intake_rounds": 3,             # question rounds before the agent gives up on a plan
         "official_argv": None,      # default: python evaluate.py --model-path {checkpoint} --limit {n} --json-output-file {out}/metrics.json
         "official_cwd": None,       # default: the session dir
         "custom_argv": None,        # default: python -m awm.wm.score_items ...
@@ -176,8 +179,79 @@ class Session:
 
     # ------------------------------------------------------------ propose / brief
 
-    def propose(self, card_path: str | os.PathLike) -> dict[str, Any]:
-        card = load_yaml(Path(card_path))
+    def propose(self, source: str | os.PathLike | None = None, *, text: str | None = None) -> dict[str, Any]:
+        """Issue an experiment.
+
+        ``source`` is either a plan (a markdown/text file describing the run — the
+        normal case; the agent drafts the card) or, for callers that already have
+        one, a card YAML. ``text`` gives the plan inline.
+        """
+        if text is None and source is not None and str(source).endswith((".yaml", ".yml")):
+            return self._propose_card(load_yaml(Path(source)), str(source))
+        plan = text if text is not None else Path(str(source)).read_text()
+        if not plan.strip():
+            raise WMError("the plan is empty; say what you will train, the launch command, where it saves, and for how many steps")
+        return self._propose_plan(plan)
+
+    def _next_card_id(self) -> str:
+        n = 1 + max((int(p.name.split("-")[1]) for p in self.cards_dir.glob("exp-*") if p.name.split("-")[1].isdigit()), default=0)
+        return f"exp-{n:02d}"
+
+    def _new_state(self, card_id: str, **extra: Any) -> dict[str, Any]:
+        st = {"schema_version": STATE_SCHEMA, "card_id": card_id, "status": "draft",
+              "created_at": now(), "brief_rounds": 0, "observations": [], "standing_taken": [],
+              "accepted_requests": [], "budget_used_min": {"total_runtime": 0.0, "requested_subset": 0.0},
+              "parent": {}, "trainer": None, "worker": None, "pending_yield": None, "seal": None,
+              "aborted": False, "final_seen": False, "override": None, "obs_counter": 0, **extra}
+        self.card_dir(card_id).mkdir(parents=True, exist_ok=True)
+        self._save_state(st)
+        return st
+
+    def _propose_plan(self, plan: str) -> dict[str, Any]:
+        card_id = self._next_card_id()
+        st = self._new_state(card_id, intake={"plan": plan, "answers": {}, "rounds": 0})
+        (self.card_dir(card_id) / "plan.md").write_text(plan)
+        self.ledger.append("plan_proposed", card_id=card_id, chars=len(plan))
+        return self._intake_step(st)
+
+    def _intake_step(self, st: dict[str, Any]) -> dict[str, Any]:
+        card_id = st["card_id"]
+        cdir = self.card_dir(card_id)
+        it = st["intake"]
+        result = self.agent.intake(card_id, it["plan"], it["answers"], self.config)
+        dump_yaml(cdir / "card.draft.yaml", result.card)
+        if result.degraded:
+            self.ledger.append("agent_degraded", card_id=card_id, where="intake", reason=result.degraded)
+            st["degraded_calls"] = int(st.get("degraded_calls", 0)) + 1
+        questions = list(result.questions)
+        if not questions:
+            try:
+                grounding = validate_card(result.card, self.dir)
+            except WMError as exc:
+                questions = [{"field": "card", "question": f"I could not build a valid card from the plan: {exc}. "
+                                                            f"Please give the missing or corrected value (field: value)."}]
+                grounding = None
+            if grounding is not None:
+                dump_yaml(cdir / "card.yaml", result.card)
+                self._materialize_grounding(result.card, grounding, cdir / "grounding")
+                self.ledger.append("card_drafted", card_id=card_id, by=result.produced_by, rounds=it["rounds"])
+                st["intake"]["done"] = True
+                self._save_state(st)
+                return self._brief(result.card, grounding, st, drafted_by=result.produced_by)
+        if it["rounds"] >= int(self.config.get("intake_rounds", 3)):
+            raise WMError(f"{card_id}: still missing {[q['field'] for q in questions]} after {it['rounds']} rounds; "
+                          f"rewrite the plan with those and propose again")
+        it["rounds"] += 1
+        self._save_state(st)
+        summary = (f"I read your plan for {card_id}; {len(questions)} thing(s) I could not determine — "
+                   + "; ".join(q["question"] for q in questions[:2]) + (" …" if len(questions) > 2 else ""))
+        return self.mailbox(card_id).send(
+            "question", summary, options=[{"id": "answer", "label": "answer the questions", "consequence": "the card is redrafted"}],
+            timeout_action={"action": "remain_draft", "after_s": self.config["timeouts_s"]["brief"]},
+            raised_by=self.agent.arm, extra={"questions": questions, "round": it["rounds"], "draft": str(cdir / "card.draft.yaml"),
+                                             "agent": self._agent_meta(result.produced_by, result.degraded)})
+
+    def _propose_card(self, card: dict[str, Any], source: str) -> dict[str, Any]:
         grounding = validate_card(card, self.dir)
         card_id = card["card_id"]
         cdir = self.card_dir(card_id)
@@ -190,14 +264,8 @@ class Session:
                 raise WMError(f"{card_id} has an unanswered {pending[0]['kind']} ({pending[0]['ping_id']}); "
                               f"reply to it (amend) instead of re-proposing")
         else:
-            cdir.mkdir(parents=True)
-            st = {"schema_version": STATE_SCHEMA, "card_id": card_id, "status": "draft",
-                  "created_at": now(), "brief_rounds": 0, "observations": [], "standing_taken": [],
-                  "accepted_requests": [], "budget_used_min": {"total_runtime": 0.0, "requested_subset": 0.0},
-                  "parent": {}, "trainer": None, "worker": None, "pending_yield": None, "seal": None,
-                  "aborted": False, "final_seen": False, "override": None, "obs_counter": 0}
-            self._save_state(st)
-            self.ledger.append("card_proposed", card_id=card_id, source=str(card_path))
+            st = self._new_state(card_id)
+            self.ledger.append("card_proposed", card_id=card_id, source=source)
         dump_yaml(cdir / "card.yaml", card)
         self._materialize_grounding(card, grounding, cdir / "grounding")
         return self._brief(card, grounding, st)
@@ -215,7 +283,8 @@ class Session:
             if src.is_file() and src.stat().st_size <= 5_000_000:
                 shutil.copy2(src, gdir / f"{i:02d}-{src.name}")
 
-    def _brief(self, card: dict[str, Any], grounding: list[dict[str, Any]], st: dict[str, Any]) -> dict[str, Any]:
+    def _brief(self, card: dict[str, Any], grounding: list[dict[str, Any]], st: dict[str, Any],
+               drafted_by: str | None = None) -> dict[str, Any]:
         card_id = card["card_id"]
         cdir = self.card_dir(card_id)
         try:
@@ -251,6 +320,10 @@ class Session:
         ]
         st["brief_rounds"] += 1
         self._save_state(st)
+        if drafted_by:
+            evidence.insert(0, {"path": str(cdir / "card.yaml"), "locator": "sections 1-4",
+                                "observation": f"the experiment card I wrote from your plan ({drafted_by}); check it before accepting"})
+            brief.summary = f"Card drafted from your plan: {cdir / 'card.yaml'}. " + brief.summary
         agent_meta = self._agent_meta(brief.produced_by, brief.degraded)
         if brief.degraded:
             self.ledger.append("agent_degraded", card_id=card_id, where="brief", reason=brief.degraded)
@@ -274,16 +347,36 @@ class Session:
     # ------------------------------------------------------------ replies
 
     def reply(self, ping_ref: str, choice: str, *, why: str | None = None,
-              amend: str | None = None) -> dict[str, Any]:
+              amend: str | None = None, answer: str | None = None,
+              answer_file: str | None = None) -> dict[str, Any]:
         card_id, ping_id = self._split_ping_ref(ping_ref)
         mb = self.mailbox(card_id)
         ping = mb.ping(ping_id)
         st = self.state(card_id)
         amend_path = str(Path(amend).resolve()) if amend else None
-        mb.record_reply(ping_id, choice, why=why, amend=amend_path)
+        mapping = load_yaml(Path(answer_file)) if answer_file else None
+        answers = _intake.parse_answers(answer, mapping) if (answer or mapping) else {}
+        if ping["kind"] == "question" and answers:
+            choice = "answer"
+        mb.record_reply(ping_id, choice, why=why, amend=amend_path, answer=answer, answers=answers)
         self.agent.on_reply(ping, {"choice": choice, "why": why}, self.memory)
         out: dict[str, Any] = {"card_id": card_id, "ping_id": ping_id, "choice": choice}
-        if ping["kind"] == "brief":
+        if ping["kind"] == "question":
+            st["intake"]["answers"].update(answers)
+            self._save_state(st)
+            nxt = self._intake_step(st)
+            out.update({"next_ping": nxt["ping_id"], "kind": nxt["kind"],
+                        "printed": render_ping(nxt, self.card_dir(card_id) / "pings" / f"{nxt['ping_id']}.yaml")})
+        elif ping["kind"] == "brief":
+            if choice == "amend" and answers and not amend_path and st.get("intake"):
+                # amend by answers: fold them into the plan's answers and redraft
+                st["intake"]["answers"].update(answers)
+                st["intake"]["rounds"] = 0
+                self._save_state(st)
+                nxt = self._intake_step(st)
+                out.update({"next_ping": nxt["ping_id"], "kind": nxt["kind"],
+                            "printed": render_ping(nxt, self.card_dir(card_id) / "pings" / f"{nxt['ping_id']}.yaml")})
+                return out
             out.update(self._after_brief_reply(st, ping, choice, why, amend_path))
         elif ping["kind"] == "yield_request":
             out.update(self._after_yield_reply(st, ping, choice))
@@ -761,13 +854,22 @@ class Session:
         self.ledger.append("sealed", card_id=card_id, obs_id=obs_id, checkpoint=str(ckpt))
         return seal
 
-    def finalize(self, card_id: str, result_path: str | os.PathLike) -> dict[str, Any]:
+    def finalize(self, card_id: str, result_path: str | os.PathLike | None = None, *,
+                 decision: str | None = None, summary: str | None = None,
+                 verdict: str | None = None) -> dict[str, Any]:
+        """Close a card. Either hand in the completed card file, or just the decision and a
+        summary — the runtime then writes sections 5-6 from its own observations."""
         st = self.state(card_id)
         if st["status"] not in ("awaiting_review", "running", "frozen"):
             raise WMError(f"{card_id} is {st['status']}")
         if st["status"] == "running" and st.get("trainer") and _alive(st["trainer"].get("pid")):
             raise WMError("training is still running; abort or let it finish first")
-        result = load_yaml(Path(result_path))
+        if result_path is None:
+            if not (decision and summary):
+                raise WMError("finalize needs either the completed card file or --decision and --summary")
+            result = self._compose_result(st, decision, summary, verdict)
+        else:
+            result = load_yaml(Path(result_path))
         validate_result(result, card_id)
         manifest_path = self.card_dir(card_id) / "manifest.json"
         if manifest_path.is_file():
@@ -790,6 +892,31 @@ class Session:
         self.mailbox(card_id).send("notice", f"Closed: {result['conclusion'].get('verdict', 'inconclusive')}, {decision}. Recorded to memory.",
                                    raised_by="runtime")
         return {"status": "closed", "decision": decision, "submission": self.config["submission"] if decision == "adopt" else None}
+
+    def _compose_result(self, st, decision: str, summary: str, verdict: str | None) -> dict[str, Any]:
+        card = self.card(st["card_id"])
+        contract = self.contract(st["card_id"]) if (self.card_dir(st["card_id"]) / "contract.yaml").is_file() else None
+        obs_id = (st.get("seal") or {}).get("obs_id") or (self._best_obs(st, contract) if contract and st["observations"] else None)
+        measurements, watch, ckpt = [], None, None
+        if obs_id and obs_id != "none":
+            obs = self._load_obs(st["card_id"], obs_id)
+            ckpt = obs["checkpoint"]["path"]
+            for name, m in obs["evaluators"].items():
+                measurements.append({"metric": m["metric"], "value": m["value"], "n": m["n"],
+                                     "path": m.get("raw"), "delta_vs_comparator": m.get("delta_vs_parent"),
+                                     "evaluator": name})
+            watch = obs.get("watch")
+        execution = "not_run" if not st["observations"] else ("killed" if st.get("aborted") else "completed")
+        started, ended = st.get("started_at"), st.get("updated_at")
+        card["result"] = {"execution": execution, "wall_h": None, "output_checkpoint": ckpt,
+                          "training_summary": {"final_loss": None, "steps": st["observations"][-1]["step"] if st["observations"] else None, "notes": None},
+                          "measurements": measurements, "watch_set_result": watch,
+                          "pings_acted_on": [p["ping_id"] for p in self.mailbox(st["card_id"]).pings() if p["reply_required"]],
+                          "observations": [o["obs_id"] for o in st["observations"]], "failure": None,
+                          "started_at": started, "closed_at": ended}
+        card["conclusion"] = {"verdict": verdict or "inconclusive", "mechanism_verdict": "not_tested",
+                              "summary": summary, "decision": decision, "next_step": None, "written_by": "runtime from the scientist's decision"}
+        return card
 
     def _adopt(self, st) -> None:
         target = Path(st["seal"]["checkpoint"])

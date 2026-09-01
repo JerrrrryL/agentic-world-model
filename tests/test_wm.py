@@ -411,3 +411,85 @@ def test_minimal_card_proposes_and_gets_a_contract_without_watch(tmp_path: Path)
     path.write_text(yaml.safe_dump(completed, sort_keys=False))
     st = s.state("exp-01"); st["status"] = "awaiting_review"; s._save_state(st)
     assert s.finalize("exp-01", path)["decision"] == "reject"
+
+
+PLAN = """We want to fix multi-step arithmetic: the base model sets problems up correctly and slips on the numbers.
+We expect SFT on worked solutions to raise dev accuracy over the base model.
+
+```bash
+python train.py --model_name_or_path {parent} --train_file data/train.jsonl --output_dir runs/exp01 --max_steps 1000
+```
+
+Evaluate with `python evaluate.py --limit 150` at each checkpoint.
+"""
+
+
+def test_plan_intake_asks_then_drafts_the_card(tmp_path: Path) -> None:
+    s, sd = make_session(tmp_path, parent_score=0.30)
+    (sd / "train.py").write_text("print('train')")
+    plan = PLAN.format(parent=sd / "parent")
+    q = s.propose(text=plan)
+    assert q["kind"] == "question" and q["card_id"] == "exp-01"
+    fields = [x["field"] for x in q["questions"]]
+    # the parser read the command, output dir, steps, data, parent and n; only resume is unknown
+    assert fields == ["setup.resume_argv"], fields
+    draft = yaml.safe_load((s.card_dir("exp-01") / "card.draft.yaml").read_text())
+    assert draft["setup"]["progress"]["total"] == 1000 and draft["evaluation"]["protocol"]["n"] == 150
+    assert draft["setup"]["output_dir"] == str(sd / "runs" / "exp01")
+    assert draft["setup"]["data"][0]["n_examples"] == 10
+    assert draft["problem"]["statement"].startswith("We want to fix multi-step arithmetic")
+    assert "expect SFT" in draft["hypothesis"]["claim"]
+    assert s.pending_replies()[0]["kind"] == "question"
+
+    out = s.reply("exp-01/p-1", "answer", answer="setup.resume_argv: yes")
+    assert out["kind"] == "brief" and out["next_ping"] == "p-2"
+    card = s.card("exp-01")
+    assert card["setup"]["resume_argv"][-2:] == ["--resume_from_checkpoint", "{checkpoint}"]
+    assert card["intake"]["answers"] == {"setup.resume_argv": "yes"}
+    brief = s.mailbox("exp-01").ping("p-2")
+    assert brief["summary"].startswith("Card drafted from your plan")
+    assert brief["evidence"][0]["locator"] == "sections 1-4"
+    assert any(r["event"] == "card_drafted" and r["by"] == "deterministic" for r in s.ledger.rows())
+
+    # amend by answers redrafts and re-briefs; then accept, run, finalize by decision
+    out = s.reply("exp-01/p-2", "amend", answer="evaluation.protocol.n: 100")
+    assert out["kind"] == "brief" and s.card("exp-01")["evaluation"]["protocol"]["n"] == 100
+    s.reply("exp-01/p-3", "accept")
+    assert s.status("exp-01")["status"] == "frozen" and list(s.status("exp-01")["parent"]) == ["dev100"]
+    for step, score in {250: 0.34, 500: 0.40, 1000: 0.39}.items():
+        assert s.checkpoint("exp-01", make_ckpt(sd, "exp-01", step, score), step=step, final=(step == 1000)) == HOOK_YIELD
+        s.run_worker("exp-01")
+    assert s.status("exp-01")["status"] == "awaiting_review"
+    out = s.finalize("exp-01", decision="adopt", summary="dev100 +0.10 over the base at step 500.")
+    assert out["status"] == "closed" and out["decision"] == "adopt"
+    closed = s.card("exp-01")
+    assert closed["conclusion"]["decision"] == "adopt" and closed["conclusion"]["verdict"] == "inconclusive"
+    assert closed["result"]["execution"] == "completed" and closed["result"]["output_checkpoint"].endswith("checkpoint-500")
+    assert {m["evaluator"] for m in closed["result"]["measurements"]} == {"dev100"}
+    assert Path(s.config["submission"]).resolve() == Path(closed["result"]["output_checkpoint"]).resolve()
+
+
+def test_plan_intake_gives_up_after_rounds_and_llm_intake_merges(tmp_path: Path) -> None:
+    s, _sd = make_session(tmp_path, parent_score=0.30)
+    s.config["intake_rounds"] = 1
+    q = s.propose(text="Train something better.")
+    assert q["kind"] == "question" and len(q["questions"]) >= 5
+    with pytest.raises(WMError, match="still missing"):
+        s.reply("exp-01/p-1", "answer", answer="hypothesis.claim: it will help")
+
+    # the llm arm drafts more from the plan and asks less; the fake backend stands in for the model
+    s2, sd2 = make_session(tmp_path / "llm", parent_score=0.30, arm="llm")
+    (sd2 / "train.py").write_text("print('train')")
+    s2.config.update({"wma_backend": "fake", "wma_fake": {
+        "intake": {"card": {"setup": {"resume_argv": ["python", "train.py", "--resume_from_checkpoint", "{checkpoint}"],
+                                      "method": {"family": "sft", "framework": "trl", "hyperparams": {"lr": 1e-5, "epochs": 1}}},
+                            "hypothesis": {"mechanism": "explicit intermediate steps in the target"}},
+                   "questions": [], "evidence": [{"path": str(sd2 / "train.py"), "locator": "1-40", "observation": "argparse defaults"}]},
+        "brief": {"summary": "fine", "evidence": [], "prediction": None},
+    }})
+    b = s2.propose(text=PLAN.format(parent=sd2 / "parent"))
+    assert b["kind"] == "brief", b
+    card = s2.card("exp-01")
+    assert card["setup"]["method"]["hyperparams"]["lr"] == 1e-5 and card["hypothesis"]["mechanism"]
+    assert card["intake"]["agent_evidence"][0]["path"] == str(sd2 / "train.py")
+    assert any(r["event"] == "card_drafted" and r["by"] == "llm" for r in s2.ledger.rows())

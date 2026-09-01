@@ -30,7 +30,15 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .base import Advice, Brief, WorldModelAgent, observation_evidence, observation_summary
+from .. import intake as _intake
+from .base import (
+    Advice,
+    Brief,
+    IntakeResult,
+    WorldModelAgent,
+    observation_evidence,
+    observation_summary,
+)
 from .retrieval import RetrievalAgent
 
 READ_ONLY_TOOLS = "Read,Grep,Glob,LS,Bash(ls:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(grep:*),Bash(rg:*),Bash(cat:*),Bash(find:*)"
@@ -53,11 +61,72 @@ OBS_SCHEMA = """{
 }"""
 
 
+INTAKE_SCHEMA = """{
+  "card": {"problem": {"statement": "..."}, "hypothesis": {"claim": "...", "mechanism": "...|null", "expected_effect": {"metric": "accuracy", "direction": "higher", "against": "base_model"}},
+           "setup": {"parent_checkpoint": {"path": "...", "origin": "base_model"}, "data": [{"path": "<abs>", "source": "<hub id | local | synthetic:self>", "n_examples": <int|null>, "selection": "...", "contamination_check": "not_run"}],
+                     "method": {"family": "sft|rft|dpo|grpo|distill|merge|decode-config|other", "framework": "...", "hyperparams": {"lr": <float|null>, "epochs": <float|null>, "batch_size": <int|null>, "max_seq_len": <int|null>}},
+                     "command": {"argv": ["..."], "cwd": "<abs>", "script": "<abs>", "log": "<abs>"}, "resume_argv": ["...", "--resume_from_checkpoint", "{checkpoint}"],
+                     "output_dir": "<abs>", "progress": {"unit": "optimizer_step", "total": <int>}},
+           "evaluation": {"protocol": {"n": <int>, "dev_set": "official --limit <n>"}, "diagnostic": null}},
+  "questions": [{"field": "<dotted field you could not determine>", "question": "<one precise question to the scientist>"}],
+  "evidence": [{"path": "<abs path you read>", "locator": "<line range>", "observation": "<what it told you>"}]
+}"""
+
+
 class LLMAgent(RetrievalAgent):
     arm = "llm"
     sources: tuple[str, ...] = ("memory", "prior_runs")
 
     # ------------------------------------------------------------ hooks
+
+    def intake(self, card_id, plan, answers, config) -> IntakeResult:
+        base = WorldModelAgent.intake(self, card_id, plan, answers, config)
+        sd = Path(config["_session_dir"])
+        listing = _workspace_listing(sd)
+        prompt = f"""{self._preamble(self._roots(config), config)}
+
+## Task: turn the scientist's plan into an experiment card
+The scientist proposed an experiment in its own words. Read the plan, then read the scripts and data files it
+refers to under `{sd}` (you may read anything under that directory except `wm/`). Fill the card fields you can
+establish from the plan and the files — argparse defaults count as established if the launch command does not
+override them; say so in hyperparams. Anything you cannot establish goes into `questions`, one precise question
+per field. Never invent a value. Keep the scientist's own words for problem.statement and hypothesis.claim.
+
+### Plan
+{plan.strip()}
+
+### Answers the scientist already gave
+{json.dumps({k: v for k, v in answers.items()}, indent=2) if answers else "(none)"}
+
+### Workspace (depth 2)
+{listing}
+
+### Deterministic draft (what the parser already read; correct it where the files say otherwise)
+{json.dumps({k: base.card.get(k) for k in ("problem", "hypothesis", "setup", "evaluation")}, indent=2, default=str)[:6000]}
+Still missing after the parser: {[q["field"] for q in base.questions]}
+
+Return:
+```json
+{INTAKE_SCHEMA}
+```"""
+        out = self._ask(config, prompt, "intake")
+        if not out or not isinstance(out.get("card"), dict):
+            base.degraded = self._last_error or "intake answer had no card"
+            return base
+        merged = base.card
+        for sec in ("problem", "hypothesis", "setup", "evaluation"):
+            incoming = out["card"].get(sec)
+            if isinstance(incoming, dict):
+                merged[sec] = _deep_merge(merged.get(sec) or {}, incoming)
+        merged.setdefault("intake", {})["agent_evidence"] = [e for e in out.get("evidence") or [] if _valid_evidence(e)]
+        questions = [q for q in out.get("questions") or [] if isinstance(q, dict) and q.get("field") and q.get("question")]
+        # the parser's own view of what is still missing, after the merge
+        still = [f for f in _intake.REQUIRED if _intake._missing(merged, f)]
+        asked = {q["field"] for q in questions}
+        for f in still:
+            if f not in asked:
+                questions.append({"field": f, "question": _intake.REQUIRED[f]})
+        return IntakeResult(card=merged, questions=questions, produced_by="llm")
 
     def on_proposal(self, card, grounding, memory, config) -> Brief:
         if "memory" in self.sources:
@@ -268,6 +337,31 @@ class TrajAgent(LLMAgent):
 
     arm = "traj"
     sources = ("prior_runs",)
+
+
+def _workspace_listing(sd: Path, depth: int = 2, limit: int = 120) -> str:
+    rows = []
+    for p in sorted(sd.rglob("*")):
+        rel = p.relative_to(sd)
+        if len(rel.parts) > depth or rel.parts[0] in ("wm", ".claude", "__pycache__") or p.name.startswith("."):
+            continue
+        if p.is_file():
+            rows.append(f"{rel}  ({p.stat().st_size} B)")
+        if len(rows) >= limit:
+            rows.append("..."); break
+    return "\n".join(rows) or "(empty)"
+
+
+def _deep_merge(a: dict, b: dict) -> dict:
+    out = dict(a)
+    for k, v in b.items():
+        if v in (None, "", [], {}):
+            continue
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
 
 
 # ---------------------------------------------------------------- degradation

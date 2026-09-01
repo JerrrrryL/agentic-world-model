@@ -27,7 +27,7 @@ from .schema import (
     now,
 )
 
-REPLY_REQUIRED = {"brief": True, "notice": False, "yield_request": True, "decision": True}
+REPLY_REQUIRED = {"brief": True, "notice": False, "yield_request": True, "decision": True, "question": True}
 
 
 class Ledger:
@@ -145,12 +145,15 @@ class Mailbox:
         return load_yaml(path) if path.is_file() else None
 
     def record_reply(self, ping_id: str, choice: str, why: str | None = None,
-                     amend: str | None = None) -> dict[str, Any]:
+                     amend: str | None = None, answer: str | None = None,
+                     answers: dict[str, Any] | None = None) -> dict[str, Any]:
         ping = self.ping(ping_id)
         if not ping["reply_required"]:
             raise WMError(f"{ping_id} is a {ping['kind']}; it takes no reply")
+        if ping["kind"] == "question" and (choice != "answer" or not (answer or answers)):
+            raise WMError(f"{ping_id} is a question; reply with --answer \"...\" or --answer-file FILE")
         valid = {o["id"] for o in ping["options"]}
-        if choice not in valid and not (ping["kind"] == "decision" and choice.startswith("select:")):
+        if ping["kind"] != "question" and choice not in valid and not (ping["kind"] == "decision" and choice.startswith("select:")):
             raise WMError(f"{ping_id} accepts {sorted(valid)}, got {choice!r}")
         if ping["kind"] == "brief" and choice not in BRIEF_OPTIONS:
             raise WMError(f"brief accepts {BRIEF_OPTIONS}")
@@ -160,11 +163,11 @@ class Mailbox:
             raise WMError(f"decision accepts {DECISION_OPTIONS} or select:<obs-id>")
         if choice == "override" and not why:
             raise WMError("override requires --why")
-        if choice == "amend" and not amend:
-            raise WMError("amend requires --amend <file>")
+        if choice == "amend" and not (amend or answer or answers):
+            raise WMError("amend requires --amend <file> or --answer \"field: value\"")
         existing = self.reply(ping_id)
         if existing is not None:
-            if existing["choice"] == choice:
+            if existing["choice"] == choice and ping["kind"] != "question":
                 return existing
             raise WMError(f"{ping_id} already answered with {existing['choice']!r}; replies are immutable")
         reply = {
@@ -174,6 +177,8 @@ class Mailbox:
             "choice": choice,
             "why": why,
             "amend": amend,
+            "answer": answer,
+            "answers": answers or {},
             "created_at": now(),
             "by": os.environ.get("AWM_REPLY_BY", "scientist"),
         }
@@ -208,6 +213,11 @@ def render_ping(ping: dict[str, Any], path: Path | None = None) -> str:
                      f"delta {p.get('delta_mean'):+.3f} ± {p.get('delta_sd'):.3f} ({p.get('basis')})")
     for ev in ping.get("evidence", [])[:6]:
         lines.append(f"  evidence: {ev.get('path')} [{ev.get('locator')}] — {ev.get('observation', '')}")
+    if ping.get("questions"):
+        for i, q in enumerate(ping["questions"], 1):
+            lines.append(f"  Q{i} [{q.get('field')}]: {q.get('question')}")
+        lines.append(f"  reply: awm wm reply {ping['card_id']}/{ping['ping_id']} --answer \"<field>: <value>\\n...\"  "
+                     f"(or --answer-file answers.yaml)")
     if ping.get("options"):
         lines.append("  options: " + " | ".join(
             f"{o['id']}" + (f" ({o['cost_min']} min)" if o.get("cost_min") else "") for o in ping["options"]))

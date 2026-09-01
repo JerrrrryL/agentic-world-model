@@ -308,6 +308,7 @@ def _wm_init(args: argparse.Namespace) -> int:
         "wma_model": args.wma_model,
         "wma_backend": args.wma_backend,
         "wma_strict": True if args.wma_strict else None,
+        "base_model": args.base_model,
         "retrieval_k": args.retrieval_k,
         "memory_sides": [x.strip() for x in args.memory_sides.split(",") if x.strip()] if args.memory_sides else None,
     }
@@ -321,14 +322,17 @@ def _wm_propose(args: argparse.Namespace) -> int:
     from awm.wm.runtime import print_ping
 
     s = _wm_session(args)
-    ping = s.propose(args.card)
+    ping = s.propose(args.plan, text=args.text)
     print_ping(ping, s)
     return 0
 
 
 def _wm_reply(args: argparse.Namespace) -> int:
     s = _wm_session(args)
-    out = s.reply(args.ping, args.choose, why=args.why, amend=args.amend)
+    choose = args.choose or ("answer" if (args.answer or args.answer_file) else None)
+    if not choose:
+        raise SystemExit("reply needs --choose <option>, or --answer/--answer-file for a question")
+    out = s.reply(args.ping, choose, why=args.why, amend=args.amend, answer=args.answer, answer_file=args.answer_file)
     printed = out.pop("printed", None)
     print(json.dumps(out, indent=2, sort_keys=True, default=str))
     if printed:
@@ -363,7 +367,7 @@ def _wm_worker(args: argparse.Namespace) -> int:
 
 def _wm_finalize(args: argparse.Namespace) -> int:
     s = _wm_session(args)
-    out = s.finalize(args.card_id, args.result)
+    out = s.finalize(args.card_id, args.result, decision=args.decision, summary=args.summary, verdict=args.verdict)
     print(json.dumps(out, indent=2, sort_keys=True, default=str))
     return 0
 
@@ -533,6 +537,7 @@ def build_parser() -> argparse.ArgumentParser:
     wi.add_argument("--wma-strict", action="store_true",
                     help="autonomous arms: a failed agent call fails the brief instead of silently falling back")
     wi.add_argument("--retrieval-k", type=int, help="top-k precedents for the retrieval/llm arms (default 5)")
+    wi.add_argument("--base-model", help="hub id being post-trained; the parent a plan gets when it names none")
     wi.add_argument("--official-argv", help="shell string with {checkpoint} {n} {out}; default runs evaluate.py")
     wi.add_argument("--official-cwd", help="cwd for the official evaluator (default: session dir)")
     wi.add_argument("--custom-argv", help="shell string with {checkpoint} {items} {out} {n}; default awm.wm.score_items")
@@ -540,15 +545,18 @@ def build_parser() -> argparse.ArgumentParser:
     wi.add_argument("--no-spawn-worker", action="store_true", help="run `awm wm worker` yourself after a yield")
     wi.set_defaults(func=_wm_init)
 
-    wp = wmc.add_parser("propose", help="issue an experiment card; returns the brief")
-    wp.add_argument("card", type=Path)
+    wp = wmc.add_parser("propose", help="propose an experiment from a plan; the agent drafts the card and returns questions or the brief")
+    wp.add_argument("plan", nargs="?", type=Path, help="plan file (markdown/text); a .yaml card is accepted too")
+    wp.add_argument("--text", help="the plan inline instead of a file")
     wp.set_defaults(func=_wm_propose)
 
     wr = wmc.add_parser("reply", help="answer a ping")
     wr.add_argument("ping", help="<card_id>/<ping_id>, e.g. exp-03/p-2")
-    wr.add_argument("--choose", required=True)
+    wr.add_argument("--choose", help="option id (brief/yield_request/decision)")
     wr.add_argument("--why")
     wr.add_argument("--amend", help="revised card file (brief: amend)")
+    wr.add_argument("--answer", help="answers to a question ping, as 'field: value' lines or free text")
+    wr.add_argument("--answer-file", help="YAML mapping of field -> value")
     wr.set_defaults(func=_wm_reply)
 
     wk = wmc.add_parser("checkpoint", help="the training hook; exit 0 continue, 3 yield, 4 abort")
@@ -562,9 +570,12 @@ def build_parser() -> argparse.ArgumentParser:
     ww.add_argument("card_id")
     ww.set_defaults(func=_wm_worker)
 
-    wf = wmc.add_parser("finalize", help="validate sections 5-6 of the completed card, close it, adopt if asked")
+    wf = wmc.add_parser("finalize", help="close a card: --decision + --summary (the runtime writes the result), or the completed card file")
     wf.add_argument("card_id")
-    wf.add_argument("result", type=Path, help="the card file with result + conclusion filled in")
+    wf.add_argument("result", nargs="?", type=Path, help="optional: the card file with result + conclusion filled in")
+    wf.add_argument("--decision", choices=["adopt", "reject", "iterate", "abandon_line"])
+    wf.add_argument("--summary", help="two lines: what happened and what it says about your hypothesis")
+    wf.add_argument("--verdict", choices=["supported", "contradicted", "inconclusive"])
     wf.set_defaults(func=_wm_finalize)
 
     ws = wmc.add_parser("status", help="session or card state")

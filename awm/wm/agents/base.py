@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .. import intake as _intake
 from ..schema import CONTRACT_SCHEMA, RULE_SCHEMA
 
 
@@ -43,6 +44,16 @@ class Advice:
     degraded: str | None = None
 
 
+@dataclass
+class IntakeResult:
+    """The agent's draft of the card from the scientist's plan, and what it still has to ask."""
+
+    card: dict[str, Any]
+    questions: list[dict[str, str]] = field(default_factory=list)   # {field, question}
+    produced_by: str = "deterministic"
+    degraded: str | None = None
+
+
 class WorldModelAgent:
     """Base policy: deterministic grounding and a default contract, nothing else."""
 
@@ -52,6 +63,12 @@ class WorldModelAgent:
         self.config = kwargs
 
     # ---- hooks the runtime calls
+
+    def intake(self, card_id: str, plan: str, answers: dict[str, Any], config: dict[str, Any]) -> IntakeResult:
+        """Draft the card from the plan and the workspace; ask for what cannot be read."""
+        card, questions = _intake.draft_card(card_id, plan, answers, config["_session_dir"],
+                                             base_model=config.get("base_model"))
+        return IntakeResult(card=card, questions=questions)
 
     def on_proposal(self, card: dict[str, Any], grounding: list[dict[str, Any]],
                     memory: Any, config: dict[str, Any]) -> Brief:

@@ -29,7 +29,7 @@ SEAL_SCHEMA = "awm-seal-v1"
 CONFIG_SCHEMA = "awm-wm-config-v1"
 
 CARD_STATES = ("draft", "frozen", "running", "awaiting_review", "closed")
-PING_KINDS = ("brief", "notice", "yield_request", "decision")
+PING_KINDS = ("brief", "notice", "yield_request", "decision", "question")
 BRIEF_OPTIONS = ("accept", "amend", "override", "withdraw")
 YIELD_OPTIONS = ("accept", "reject")
 DECISION_OPTIONS = ("continue", "more_eval", "abort")  # plus select:<obs-id>
@@ -227,7 +227,8 @@ def validate_card(card: dict[str, Any], session_dir: Path) -> list[dict[str, Any
     parent = _mapping(_req(setup, "parent_checkpoint", "setup"), "setup.parent_checkpoint")
     ppath = Path(str(_req(parent, "path", "setup.parent_checkpoint")))
     _req(parent, "origin", "setup.parent_checkpoint")
-    check("parent_checkpoint.path", ppath.is_dir(), f"{ppath} is a directory")
+    check("parent_checkpoint.path", ppath.is_dir() or bool(re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", str(ppath))),
+          f"{ppath} is a directory or a hub model id")
     for i, d in enumerate(_list(_req(setup, "data", "setup"), "setup.data")):
         d = _mapping(d, f"setup.data[{i}]")
         for key in ("path", "source", "n_examples", "selection", "contamination_check"):
@@ -239,7 +240,7 @@ def validate_card(card: dict[str, Any], session_dir: Path) -> list[dict[str, Any
     method = _mapping(_req(setup, "method", "setup"), "setup.method")
     if _req(method, "family", "setup.method") not in METHOD_FAMILIES:
         raise WMError(f"setup.method.family must be one of {METHOD_FAMILIES}")
-    _mapping(_req(method, "hyperparams", "setup.method"), "setup.method.hyperparams")
+    _mapping(method.get("hyperparams") or {}, "setup.method.hyperparams")
     cmd = _mapping(_req(setup, "command", "setup"), "setup.command")
     argv = _list(_req(cmd, "argv", "setup.command"), "setup.command.argv")
     if not all(isinstance(a, str) for a in argv):

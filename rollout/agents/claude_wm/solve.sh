@@ -53,7 +53,8 @@ export PATH="/home/ben/.local/bin:${PATH}"
 python3 -c "import awm.wm.runtime, yaml; print('awm import ok')" || { echo "ERROR: awm does not import" >&2; exit 1; }
 
 export AWM_SESSION_DIR=/home/ben/task
-cp /home/ben/awm/input/exp-card.template.yaml /home/ben/task/exp-card.template.yaml
+BASE_MODEL="$(printf '%s' "$PROMPT" | grep -oE '`[^`]+/[^`]+`' | head -1 | tr -d '`')"
+echo "base model from prompt: ${BASE_MODEL:-<not found>}"
 rm -rf /home/ben/task/.claude && cp -r /home/ben/awm/.claude /home/ben/task/.claude
 
 # A cell's label must equal what ran: arms that read memory get no silent
@@ -68,6 +69,7 @@ case "${ARM}" in
 esac
 INIT_ARGS=(--arm "${ARM}" --submission /home/ben/task/final_model --submission-mode copy
            --memory-root "${MEM}" --memory-sides "${SIDES}" --wma-model "${WMA_MODEL}")
+[ -n "${BASE_MODEL:-}" ] && INIT_ARGS+=(--base-model "${BASE_MODEL}")
 [ "${RO:-}" = "ro" ] && INIT_ARGS+=(--memory-readonly --split-side test)
 case "${ARM}" in
     traj|llm)
